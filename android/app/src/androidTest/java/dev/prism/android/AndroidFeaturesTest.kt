@@ -132,8 +132,8 @@ class AndroidFeaturesTest {
             assertTrue(device.takeScreenshot(File(dir,file)))
         }
         device.findObject(By.desc("节点")).click(); device.waitForIdle()
-        val scroll=device.findObject(By.clazz("android.widget.ScrollView"))
-        scroll.scroll(Direction.DOWN,0.8f); device.waitForIdle()
+        assertTrue(device.wait(Until.hasObject(By.text("节点与订阅")),5000))
+        UiScrollable(UiSelector().className("android.widget.ScrollView")).scrollForward(); device.waitForIdle()
         val field=device.findObject(By.clazz("android.widget.EditText"))
         assertNotNull(field); field.text="Japan"; device.waitForIdle()
         assertTrue(device.wait(Until.hasObject(By.text("Japan Tokyo")),5000))
