@@ -89,8 +89,16 @@ impl Snapshot {
         home: &Path,
         routing: &crate::routing::Routing,
     ) -> Result<PathBuf> {
-        let dir = self.verify(home)?;
         let (ip, site) = routing.geo_codes();
+        self.validate_codes(home, ip, site)
+    }
+    pub fn validate_codes(
+        &self,
+        home: &Path,
+        ip: Vec<String>,
+        site: Vec<String>,
+    ) -> Result<PathBuf> {
+        let dir = self.verify(home)?;
         if !ip.is_empty() {
             let sets = prism_core::geo::load_geoip(&dir.join("geoip.dat"), &ip)?;
             for code in ip {
@@ -117,16 +125,29 @@ pub fn validate(
     snapshot: Option<&Snapshot>,
     routing: Option<&crate::routing::Routing>,
 ) -> Result<PathBuf> {
-    let Some(routing) = routing else {
-        return Ok(home.into());
-    };
-    let (ip, site) = routing.geo_codes();
+    validate_policy(home, snapshot, routing, None)
+}
+pub fn validate_policy(
+    home: &Path,
+    snapshot: Option<&Snapshot>,
+    routing: Option<&crate::routing::Routing>,
+    ads: Option<&crate::adblock::Config>,
+) -> Result<PathBuf> {
+    let (ip, mut site) = routing.map(|r| r.geo_codes()).unwrap_or_default();
+    if let Some(ads) = ads {
+        ads.rule()?;
+        if ads.enabled {
+            site.push(crate::adblock::CATEGORY.into());
+            site.sort();
+            site.dedup();
+        }
+    }
     if ip.is_empty() && site.is_empty() {
         return Ok(home.into());
     }
     let snapshot =
         snapshot.ok_or_else(|| anyhow::anyhow!("请先下载并验证地区数据，再启用地区规则"))?;
-    snapshot.validate_rules(home, routing)
+    snapshot.validate_codes(home, ip, site)
 }
 
 #[cfg(test)]

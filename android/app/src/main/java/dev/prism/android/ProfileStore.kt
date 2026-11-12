@@ -87,6 +87,7 @@ class ProfileStore(context: Context) {
         val sessionNode=JSONObject(selectedNode.toString()).put("name",MergedNodes.display(merged))
         val session=JSONObject().put("node",sessionNode).put("routing",profile.getJSONObject("routing"))
         profile.optJSONObject("geodata")?.let {session.put("geodata",it)}
+        profile.optJSONObject("adblock")?.let {session.put("adblock",it)}
         val automatic=profile.optJSONObject("automatic")
         if(automatic?.optBoolean("enabled")==true) {
             val ids=automatic.getJSONArray("candidateIds");require(ids.length() in 2..16) {"自动优选须有 2–16 个候选节点"}
@@ -131,7 +132,7 @@ class ProfileStore(context: Context) {
         requireIdle()
         val state=load()
         check(state.getJSONObject("routing").toString()==expected) {"规则已被其他页面修改，请重新打开后编辑"}
-        val result=JSONObject(CoreBridge.routing(JSONObject().put("action","validate").put("routing",next).put("home",home).put("geodata",state.optJSONObject("geodata")).toString()))
+        val result=JSONObject(CoreBridge.routing(JSONObject().put("action","validate").put("routing",next).put("home",home).put("geodata",state.optJSONObject("geodata")).put("adblock",state.optJSONObject("adblock")).toString()))
         require(!result.has("error")) {result.optString("error")}
         state.put("routing",next); save(state)
     }
@@ -140,9 +141,15 @@ class ProfileStore(context: Context) {
         check((state.optJSONObject("geodata")?.toString() ?: "{}")==expected) {"地区数据已变化，请重新打开后更新"}
         val inspect=JSONObject(CoreBridge.geodata(JSONObject().put("home",home).put("snapshot",next).toString()))
         require(!inspect.has("error")) {inspect.optString("error")}
-        val validated=JSONObject(CoreBridge.routing(JSONObject().put("action","validate").put("routing",state.getJSONObject("routing")).put("home",home).put("geodata",next).toString()))
+        val validated=JSONObject(CoreBridge.routing(JSONObject().put("action","validate").put("routing",state.getJSONObject("routing")).put("home",home).put("geodata",next).put("adblock",state.optJSONObject("adblock")).toString()))
         require(!validated.has("error")) {validated.optString("error")}
         state.put("geodata",next);save(state)
+    }
+    fun updateAdblock(expected:String,next:JSONObject)=synchronized(lock) {
+        requireIdle();val state=load()
+        check((state.optJSONObject("adblock")?.toString() ?: "{}")==expected) {"广告设置已变化，请重新打开后修改"}
+        val validated=JSONObject(CoreBridge.routing(JSONObject().put("action","validate").put("routing",state.getJSONObject("routing")).put("home",home).put("geodata",state.optJSONObject("geodata")).put("adblock",next).toString()))
+        require(!validated.has("error")) {validated.optString("error")};state.put("adblock",next);save(state)
     }
     fun import(raw: String, append: Boolean, sourceUrl: String? = null, sourceId: String? = null, sourceName: String? = null): String = synchronized(lock) {
         require(raw.length <= 4 * 1024 * 1024) { "导入内容超过 4 MiB" }

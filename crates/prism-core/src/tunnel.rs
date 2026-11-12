@@ -115,6 +115,8 @@ pub struct Traffic {
 
 #[derive(Default)]
 pub struct Stats {
+    /// Mobile ad-block refusal attempts; no destination history.
+    pub ads_blocked: AtomicU64,
     pub upload: AtomicU64,
     pub download: AtomicU64,
     pub conns: Mutex<HashMap<String, Arc<Conn>>>,
@@ -221,7 +223,10 @@ impl Tunnel {
             Mode::Direct => ("DIRECT".to_string(), "Direct".to_string(), String::new()),
             Mode::Global => ("GLOBAL".to_string(), "Global".to_string(), String::new()),
             Mode::Rule => match self.router.route(meta).await {
-                Some(r) => (r.target.clone(), r.display(), r.payload.clone()),
+                Some(r) => {
+                    if r.kind == "PRISM-ADS" && r.target == "REJECT" { self.stats.ads_blocked.fetch_add(1,Ordering::Relaxed); }
+                    (r.target.clone(), r.display(), r.payload.clone())
+                },
                 None => ("DIRECT".to_string(), "Match".to_string(), String::new()),
             },
         }

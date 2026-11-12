@@ -368,6 +368,7 @@ class MainActivity : Activity() {
         button("管理路由规则") {startActivity(Intent(this,RoutingActivity::class.java))}
         button("自动优选节点") {startActivity(Intent(this,AutomaticActivity::class.java))}
         button("地区数据与分类") {startActivity(Intent(this,GeoDataActivity::class.java))}
+        button("广告域名拦截") {startActivity(Intent(this,AdblockActivity::class.java))}
         }
         card {
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)

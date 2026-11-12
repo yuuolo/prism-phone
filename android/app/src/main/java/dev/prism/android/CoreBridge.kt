@@ -6,6 +6,7 @@ object CoreBridge {
     @JvmStatic external fun validateSession(session: String): String
     @JvmStatic external fun routing(request: String): String
     @JvmStatic external fun geodata(request: String): String
+    @JvmStatic external fun resetAdStats(session: String): String
     @JvmStatic external fun start(fd: Int, session: String, home: String, service: PrismVpnService): String
     @JvmStatic external fun stop()
     @JvmStatic external fun stopAndTraffic(): String

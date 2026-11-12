@@ -25,6 +25,8 @@ pub struct Session {
     pub automatic: Option<crate::automatic::Plan>,
     #[serde(default)]
     pub geodata: Option<crate::geodata::Snapshot>,
+    #[serde(default)]
+    pub adblock: Option<crate::adblock::Config>,
 }
 
 pub(crate) fn supported(node: &ProxyConfig) -> bool {
@@ -102,6 +104,11 @@ pub fn build(s: Session) -> Result<(Profile, String)> {
     if let Some(routing) = s.routing {
         rules = routing.compile()?;
     }
+    if let Some(ads) = s.adblock {
+        if let Some(rule) = ads.rule()? {
+            rules.insert(0, rule);
+        }
+    }
     let mut p = Profile {
         proxies: vec![ProxyConfig {
             name: "手机节点".into(),
@@ -164,6 +171,7 @@ mod tests {
             routing: None,
             automatic: None,
             geodata: None,
+            adblock: None,
         })
         .unwrap();
         assert!(p.general.block_ipv6);
@@ -185,6 +193,7 @@ mod tests {
             routing: None,
             automatic: None,
             geodata: None,
+            adblock: None,
         })
         .is_err());
         assert!(build(Session {
@@ -196,6 +205,7 @@ mod tests {
             routing: None,
             automatic: None,
             geodata: None,
+            adblock: None,
         })
         .is_ok());
     }

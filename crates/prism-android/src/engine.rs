@@ -38,6 +38,7 @@ struct Running {
     default_target: String,
     automatic: Option<crate::automatic::Plan>,
     geo_valid: Arc<AtomicBool>,
+    ads_enabled: bool,
     local_proxy: Arc<tokio::sync::Mutex<Option<crate::local_proxy::LocalProxy>>>,
     can_lan: Arc<dyn Fn() -> bool + Send + Sync>,
     proxy_notify: Arc<dyn Fn(bool, bool, u16) + Send + Sync>,
@@ -63,6 +64,32 @@ fn current_node_name(r: &Running) -> String {
         .unwrap_or_else(|| r.node_name.clone())
 }
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
+#[no_mangle]
+pub extern "system" fn Java_dev_prism_android_CoreBridge_resetAdStats(
+    mut env: JNIEnv,
+    _: JClass,
+    session: JString,
+) -> jstring {
+    ffi(&mut env, |env| {
+        let Ok(session) = input(env, &session) else {
+            return json!({"error":"会话参数无效"});
+        };
+        let slot = ENGINE.lock().unwrap_or_else(|p| p.into_inner());
+        let Some(r) = slot
+            .as_ref()
+            .filter(|r| r.alive.load(Ordering::Acquire) && r.session_id.to_string() == session)
+        else {
+            return json!({"error":"VPN 会话已变化，请刷新后重试"});
+        };
+        r.hub
+            .core()
+            .tunnel
+            .stats
+            .ads_blocked
+            .store(0, Ordering::Relaxed);
+        json!({"ok":true})
+    })
+}
 #[no_mangle]
 pub extern "system" fn Java_dev_prism_android_CoreBridge_geodata(
     mut env: JNIEnv,
@@ -120,7 +147,15 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_routing(
                         serde_json::from_value(request["geodata"].clone())
                             .map_err(|_| anyhow::anyhow!("地区数据快照格式无效"))?;
                     let home = PathBuf::from(request["home"].as_str().unwrap_or_default());
-                    crate::geodata::validate(&home, snapshot.as_ref(), Some(&routing))?;
+                    let ads: Option<crate::adblock::Config> =
+                        serde_json::from_value(request["adblock"].clone())
+                            .map_err(|_| anyhow::anyhow!("广告拦截配置格式无效"))?;
+                    crate::geodata::validate_policy(
+                        &home,
+                        snapshot.as_ref(),
+                        Some(&routing),
+                        ads.as_ref(),
+                    )?;
                     Ok(json!({"ok":true,"activeRules":count}))
                 }
                 Some("import") => Ok(
@@ -468,18 +503,22 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
             .unwrap_or_else(|| "SELECTED".into());
         let geo_snapshot = session.geodata.clone();
         let geo_routing = session.routing.clone();
+        let ads = session.adblock.clone();
+        let ads_enabled = ads.as_ref().is_some_and(|a| a.enabled);
         let Ok((profile, reload)) = profile::build(session) else {
             return json!({"error":"节点或路由规则不受支持"});
         };
         let geo_base = PathBuf::from(&home);
-        let geo_used = geo_routing.as_ref().is_some_and(|r| {
-            let (a, b) = r.geo_codes();
-            !a.is_empty() || !b.is_empty()
-        });
-        let home = match crate::geodata::validate(
+        let geo_used = ads_enabled
+            || geo_routing.as_ref().is_some_and(|r| {
+                let (a, b) = r.geo_codes();
+                !a.is_empty() || !b.is_empty()
+            });
+        let home = match crate::geodata::validate_policy(
             &geo_base,
             geo_snapshot.as_ref(),
             geo_routing.as_ref(),
+            ads.as_ref(),
         ) {
             Ok(path) => path.to_string_lossy().into_owned(),
             Err(_) => {
@@ -649,6 +688,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                     default_target,
                     automatic,
                     geo_valid,
+                    ads_enabled,
                     local_proxy: Arc::new(tokio::sync::Mutex::new(None)),
                     can_lan,
                     proxy_notify,
@@ -731,7 +771,8 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_status(
                 json!({"running":r.alive.load(Ordering::Acquire),"upload":s.upload.load(Ordering::Relaxed),"download":s.download.load(Ordering::Relaxed),"tunReceived":received,"tunSent":sent,
                     "sessionId":r.session_id.to_string(),"uptimeMs":r.started.elapsed().as_millis() as u64,
                     "connections":connections,"nodeName":current_node_name(r),"directRules":r.direct_rules,"activeRules":r.active_rules,"defaultTarget":r.default_target,
-                    "automatic":r.automatic.as_ref().map(|p|p.snapshot(&r.hub)).unwrap_or_else(||json!({"enabled":false})),"geodataValid":r.geo_valid.load(Ordering::Acquire)})
+                    "automatic":r.automatic.as_ref().map(|p|p.snapshot(&r.hub)).unwrap_or_else(||json!({"enabled":false})),"geodataValid":r.geo_valid.load(Ordering::Acquire),
+                    "adblockEnabled":r.ads_enabled,"adsBlocked":s.ads_blocked.load(Ordering::Relaxed)})
             }
             None => json!({"running":false,"upload":0,"download":0}),
         }

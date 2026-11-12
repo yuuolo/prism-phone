@@ -220,6 +220,7 @@ impl Rule {
     /// Display name in mihomo style, e.g. `DomainSuffix(google.com)`.
     pub fn display(&self) -> String {
         let kind = match self.kind.as_str() {
+            "PRISM-ADS" => return "AdBlock".into(),
             "MATCH" => return "Match".into(),
             "GEOSITE" => "GeoSite".to_string(),
             "GEOIP" => "GeoIP".to_string(),
@@ -266,7 +267,7 @@ pub struct Router {
 
 /// (kind, payload) of a rule and, for logical rules, of every sub-rule.
 fn walk(kind: &str, payload: &str, out: &mut Vec<(String, String)>) {
-    if matches!(kind, "AND" | "OR" | "NOT") {
+    if matches!(kind, "AND" | "OR" | "NOT" | "PRISM-ADS") {
         for (k, p) in logical_parts(payload).unwrap_or_default() {
             walk(&k, &p, out);
         }
@@ -301,14 +302,14 @@ impl GeoData<'_> {
                 .cloned()
                 .map(Cond::RuleSet)
                 .ok_or_else(|| Skip::Warn(format!("rule-provider {p} not available"))),
-            "AND" | "OR" | "NOT" => {
+            "AND" | "OR" | "NOT" | "PRISM-ADS" => {
                 let parts = logical_parts(p).ok_or_else(|| Skip::Warn(format!("bad {kind} payload {p}")))?;
                 let mut conds = Vec::new();
                 for (k, sub) in &parts {
                     conds.push(self.cond(k, sub)?);
                 }
                 Ok(match kind {
-                    "AND" => Cond::And(conds),
+                    "AND" | "PRISM-ADS" => Cond::And(conds),
                     "OR" => Cond::Or(conds),
                     _ if conds.len() == 1 => Cond::Not(Box::new(conds.pop().unwrap())),
                     _ => return Err(Skip::Warn("NOT takes exactly one condition".into())),
