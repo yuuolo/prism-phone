@@ -2,13 +2,13 @@
 
 本文定义移动端的交付边界。稳定安装包支持 Windows 和 macOS；Android 已提供 Beta 测试包，其他移动平台尚未发布。
 
-开发状态：Android `0.2.0-beta.1` 已[发布](https://github.com/yuuolo/prism/releases/tag/android-v0.2.0-beta.1)，工程位于 `android/`，JNI 桥位于 `crates/prism-android/`。ARM64/x86_64、Debug/Release 构建、Lint，以及 Android 17 / API 37.2 / 16 KiB 内存页模拟器的 5 项[验收通过](https://github.com/yuuolo/prism/actions/runs/43163603189)。覆盖 Alpha 配置迁移、多订阅隔离、节点搜索与页面截图、升级通知和安装校验、系统 VPN/DNS/TCP/UDP、会话重建、IPv6 阻断及连续三轮重连。发布包沿用原安卓签名，私钥不上传；公开升级元数据与 APK 大小、SHA-256 一致。构建和模拟器通过不能替代真机稳定性验证。工程说明见 [Android README](../android/README.md)。
+开发状态：Android `0.2.0-beta.2` 已在[手机独立仓库发布](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.2)，工程位于 `android/`，JNI 桥位于 `crates/prism-android/`。ARM64/x86_64、Debug/Release 构建、Lint、Rust 策略和速率单元测试，以及 Android 17 / API 37.2 / 16 KiB 内存页模拟器的 5 项[验收通过](https://github.com/yuuolo/prism-phone/actions/runs/43197440727)。覆盖 Alpha 配置迁移、多订阅隔离、节点搜索与页面截图、升级通知和安装校验、系统 VPN/DNS/TCP/UDP、真实内核仪表盘数据、会话重建、IPv6 阻断及连续三轮重连。发布包沿用原安卓签名，私钥不上传；新旧仓库镜像 APK 与升级元数据的大小、SHA-256 一致。构建和模拟器通过不能替代真机稳定性验证。工程说明见 [Android README](../android/README.md)。
 
-当前优先完善 Android：`0.2.0-beta.1` 增加界面重做、多订阅、节点管理和独立升级通知，已完成发布。更新通道为独立的 `android-updates/android-update.json`，桌面 latest 仍为 v0.2.10；Alpha 用户需手动覆盖安装 Beta 一次。根据用户最新决定，iOS/iPadOS 和 HarmonyOS NEXT 暂停，待具备相应开发者账号及验证条件后再继续；目前没有 iOS 或 NEXT 安装包，不使用 APK 容器充当原生鸿蒙。
+当前优先完善 Android：Beta.1 增加界面重做、多订阅、节点管理和独立升级通知；Beta.2 增加真实内核运行时间、实时速率、连接数及当前策略。更新通道为独立的 `android-updates/android-update.json`，Beta.1 的旧仓库通道继续维护，桌面 latest 仍为 v0.2.10；Alpha 用户需手动覆盖安装 Beta 一次。根据用户最新决定，iOS/iPadOS 和 HarmonyOS NEXT 暂停，待具备相应开发者账号及验证条件后再继续；目前没有 iOS 或 NEXT 安装包，不使用 APK 容器充当原生鸿蒙。
 
 ## 产品边界
 
-Android 完整版功能以 [完整范围与验收](android-full.md) 为准。`0.2.0-beta.1` 属于基础增强版，仪表盘、流量路由、网络工具、广告拦截、自动优选、完整统计、地区分流、策略化订阅合并、完整规则和链式代理尚未全部接入。
+Android 完整版功能以 [完整范围与验收](android-full.md) 为准。`0.2.0-beta.2` 仍属于基础增强版，仪表盘历史入口、流量路由、网络工具、广告拦截、自动优选、完整统计、地区分流、策略化订阅合并、完整规则和链式代理尚未全部接入。
 
 手机端与电脑端分别设计界面、运行机制、设置和发布流程。移动端不追求桌面功能齐全；无法实现、实现成本过高或在目标系统上不稳定的功能不纳入该平台版本，不保留不可用的按钮、占位页或需要反复重启的兼容模式。
 

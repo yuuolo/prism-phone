@@ -1,11 +1,11 @@
 # Prism Android
 
-独立原生 Kotlin 界面与 Android VpnService，内嵌 Rust prism-core。开发版本 `0.2.0-beta.1`，与桌面版本、设置、签名及更新渠道分开。当前为 Beta 验证阶段。
+独立原生 Kotlin 界面与 Android VpnService，内嵌 Rust prism-core。当前发布版本 [0.2.0-beta.2](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.2)，与桌面版本、设置、签名及更新渠道分开。当前为 Beta 验证阶段。
 
 ## 范围
 
 - 连接/断开、系统 VPN 授权、前台连接通知。
-- 未发布开发改动：连接页显示真实内核运行时间、实时速率、活跃连接数、当前规则策略和默认节点；仅前台采样，流量统计口径及验证状态见[完整版进度](../docs/android-full.md)。
+- 连接页显示真实内核运行时间、实时速率、活跃连接数、当前规则策略和默认节点；仅前台采样，流量统计口径及验证状态见[完整版进度](../docs/android-full.md)。
 - 多个 HTTPS 订阅独立导入/更新和删除，粘贴配置与单节点添加；更新一个订阅不覆盖其他来源。
 - 节点搜索、协议筛选、名称/协议/收藏排序、收藏、选择和删除；按需测试当前节点。
 - 基础域名后缀/IPv4 CIDR 直连规则，受限的本地运行记录及复制。

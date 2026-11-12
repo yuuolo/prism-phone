@@ -10,4 +10,6 @@
 
 发布门槛为 Android CI 的 Rust 策略测试、速率单元测试、ARM64/x86_64 原生库、Debug/Release 构建、Lint 和 Android 17 / 16 KiB 页模拟器验收通过；发布流程只在这些任务全部成功后签名上传。
 
+2026-11-12：[发布 CI](https://github.com/yuuolo/prism-phone/actions/runs/43197440727) 已全部通过，模拟器执行 5 项测试成功。已完成原证书签名、16 KiB 对齐及双仓库更新清单核验。APK 大小 22,992,525 字节，SHA-256：`6b27d0821a50d92b078b8bda258028b452d4c377f94f8f08a7877b3a2d77466f`。
+
 真机的 Wi-Fi/蜂窝切换、锁屏、后台、耗电和覆盖升级仍待验证。iOS/iPadOS 与 HarmonyOS NEXT 继续暂停。
