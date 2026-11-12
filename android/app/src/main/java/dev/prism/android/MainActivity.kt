@@ -173,6 +173,7 @@ class MainActivity : Activity() {
         card {
             label("实时概况",19f)
             dashboard=label("内核未运行",14f)
+            button("查看连接与路由") {startActivity(Intent(this,ConnectionsActivity::class.java))}
             label("速率为相邻采样间的平均值。累计仅含本次 VPN 会话的 TCP/UDP 转发载荷（含直连），不含协议开销和内核 DNS 查询；断开后重置。",12f)
         }
         card {

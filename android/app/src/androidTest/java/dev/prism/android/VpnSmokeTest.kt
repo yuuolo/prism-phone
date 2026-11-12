@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.VpnService
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.*
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -56,6 +57,12 @@ class VpnSmokeTest {
                 output.write(byteArrayOf(5,0,0,1,127,0,0,1,0,0)); output.flush()
                 val request=ByteArrayOutputStream()
                 while(request.size()<8192) {val b=input.read(); if(b<0) return; request.write(b); if(request.toString("US-ASCII").endsWith("\r\n\r\n")) break}
+                if(request.toString("US-ASCII").startsWith("GET /hold ")) {
+                    s.soTimeout=15000
+                    output.write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n".toByteArray()); output.flush()
+                    while(input.read()>=0) {} // Client cancellation must close this real relay.
+                    return
+                }
                 output.write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK".toByteArray()); output.flush()
             } catch (_: Exception) {}
         }}
@@ -131,6 +138,7 @@ class VpnSmokeTest {
                 assertEquals(0,status.getInt("directRules"))
                 val session=status.getString("sessionId")
                 previousSession=session
+                connectionDetailsAndCancellation(session)
                 CoreBridge.networkChanged(); Thread.sleep(600)
                 dns(false); http(); udp()
                 val reloaded=JSONObject(CoreBridge.status())
@@ -151,6 +159,7 @@ class VpnSmokeTest {
             assertFalse(stopped.getBoolean("running"))
             assertEquals(0L,stopped.getLong("upload"))
             assertEquals(0L,stopped.getLong("download"))
+            assertTrue(JSONObject(CoreBridge.connections("{}")).has("error"))
             repeat(3) {
                 context.startForegroundService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT))
                 try {
@@ -161,5 +170,47 @@ class VpnSmokeTest {
                 finally { context.startService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.DISCONNECT)); await("已断开") }
             }
         }
+    }
+    private fun connectionDetailsAndCancellation(session: String) {
+        val query=JSONObject().put("network","udp").put("route","proxy").put("search","203.0.113.7").toString()
+        val page=JSONObject(CoreBridge.connections(query))
+        assertEquals(session,page.getString("sessionId"))
+        assertEquals(1,page.getInt("matched"))
+        val udp=page.getJSONArray("connections").getJSONObject(0)
+        assertEquals("203.0.113.7:3478",udp.getString("destination"))
+        assertTrue(udp.getString("rule").isNotEmpty())
+        assertEquals("手机节点",udp.getJSONArray("chains").getString(0))
+        assertTrue(udp.getLong("upload")>0 && udp.getLong("download")>0)
+        assertEquals(0,JSONObject(CoreBridge.connections("{\"route\":\"direct\"}")).getInt("matched"))
+        assertTrue(JSONObject(CoreBridge.connections("{\"network\":\"invalid\"}")).has("error"))
+        fun close(id: String,s: String=session)=JSONObject(CoreBridge.closeConnection(JSONObject().put("sessionId",s).put("id",id).toString()))
+        assertTrue(close(udp.getString("id"),"stale-session").has("error"))
+        assertTrue(close(udp.getString("id")).getBoolean("closed"))
+        val until=System.currentTimeMillis()+3000
+        while(JSONObject(CoreBridge.connections(query)).getInt("matched")>0 && System.currentTimeMillis()<until) Thread.sleep(50)
+        assertEquals(0,JSONObject(CoreBridge.connections(query)).getInt("matched"))
+        assertFalse(close(udp.getString("id")).getBoolean("closed"))
+        Socket().use {socket ->
+            socket.soTimeout=3000; socket.connect(InetSocketAddress("203.0.113.8",80),3000)
+            socket.getOutputStream().write("GET /hold HTTP/1.1\r\nHost: hold.invalid\r\n\r\n".toByteArray())
+            assertEquals('H'.code,socket.getInputStream().read())
+            val tcpQuery="{\"network\":\"tcp\",\"search\":\"203.0.113.8\"}"
+            val tcp=JSONObject(CoreBridge.connections(tcpQuery)).getJSONArray("connections").getJSONObject(0)
+            assertEquals("tcp",tcp.getString("network"))
+            assertTrue(tcp.getLong("upload")>0)
+            // Show the real connection in the foreground UI before closing it.
+            context.startActivity(Intent(context,ConnectionsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            val device=UiDevice.getInstance(instrumentation)
+            assertTrue(device.wait(Until.hasObject(By.text("203.0.113.8:80")),5000))
+            val dir=File(context.getExternalFilesDir(null),"screenshots").apply {mkdirs()}
+            assertTrue(device.takeScreenshot(File(dir,"connections.png")))
+            assertTrue(close(tcp.getString("id")).getBoolean("closed"))
+            // A readable EOF proves the relay was cancelled, rather than only hidden.
+            try {socket.getInputStream().readBytes()}
+            catch(e: SocketTimeoutException) {throw AssertionError("Closed TCP relay must terminate",e)}
+            catch(_: IOException) {} // A reset also proves termination.
+            device.findObject(By.text("返回连接")).click()
+        }
+        udp() // Closing one UDP session must not break subsequent forwarding.
     }
 }

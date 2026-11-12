@@ -50,6 +50,56 @@ fn input(env: &mut JNIEnv, s: &JString) -> Result<String, ()> {
     env.get_string(s).map(Into::into).map_err(|_| ())
 }
 #[no_mangle]
+pub extern "system" fn Java_dev_prism_android_CoreBridge_connections(
+    mut env: JNIEnv,
+    _: JClass,
+    raw: JString,
+) -> jstring {
+    ffi(&mut env, |env| {
+        let Ok(query) =
+            input(env, &raw).and_then(|s| crate::connections::Query::parse(&s).map_err(|_| ()))
+        else {
+            return json!({"error":"连接查询参数无效"});
+        };
+        let snapshot = {
+            let slot = ENGINE.lock().unwrap_or_else(|p| p.into_inner());
+            slot.as_ref()
+                .filter(|r| r.alive.load(Ordering::Acquire))
+                .map(|r| (r.hub.core().tunnel.stats.clone(), r.session_id.to_string()))
+        };
+        match snapshot {
+            Some((stats, session)) => {
+                serde_json::to_value(query.snapshot(&stats, session)).unwrap()
+            }
+            None => json!({"error":"内核未运行"}),
+        }
+    })
+}
+#[no_mangle]
+pub extern "system" fn Java_dev_prism_android_CoreBridge_closeConnection(
+    mut env: JNIEnv,
+    _: JClass,
+    raw: JString,
+) -> jstring {
+    ffi(&mut env, |env| {
+        let Ok(request) = input(env, &raw).and_then(|s| {
+            if s.len() > 512 {
+                return Err(());
+            }
+            serde_json::from_str::<crate::connections::Close>(&s).map_err(|_| ())
+        }) else {
+            return json!({"error":"关闭请求无效"});
+        };
+        let slot = ENGINE.lock().unwrap_or_else(|p| p.into_inner());
+        let Some(r) = slot.as_ref().filter(|r| {
+            r.alive.load(Ordering::Acquire) && r.session_id.to_string() == request.session_id
+        }) else {
+            return json!({"error":"连接会话已变化，请刷新"});
+        };
+        json!({"closed":r.hub.core().tunnel.stats.close(&request.id)})
+    })
+}
+#[no_mangle]
 pub extern "system" fn Java_dev_prism_android_CoreBridge_importProfile(
     mut env: JNIEnv,
     _: JClass,
