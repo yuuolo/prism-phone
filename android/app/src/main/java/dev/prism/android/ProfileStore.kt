@@ -15,7 +15,14 @@ import javax.crypto.spec.GCMParameterSpec
 /** Credentials and subscription URLs never enter plaintext preferences or backups. */
 class ProfileStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("prism-mobile", Context.MODE_PRIVATE)
-    companion object { private val lock = Any(); private const val ALIAS = "prism-mobile-profile-v1" }
+    companion object {
+        private val lock = Any(); private const val ALIAS = "prism-mobile-profile-v1"
+        fun sessionServers(session:JSONObject):List<String> {
+            val candidates=session.optJSONObject("automatic")?.optJSONArray("candidates")
+            return if(candidates==null) listOf(session.getJSONObject("node").getString("server"))
+                else (0 until candidates.length()).map {candidates.getJSONObject(it).getJSONObject("node").getString("server")}
+        }
+    }
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (store.getKey(ALIAS, null) as? SecretKey)?.let { return it }
@@ -67,12 +74,34 @@ class ProfileStore(context: Context) {
         val bytes = cipher.iv + cipher.doFinal(value.toString().toByteArray(Charsets.UTF_8))
         check(prefs.edit().putString("profile", Base64.encodeToString(bytes, Base64.NO_WRAP)).commit())
     }
-    fun session(): String {
-        val profile = load()
+    fun session(): String = buildSession(load()).toString()
+    private fun buildSession(profile:JSONObject):JSONObject {
         val nodes = profile.getJSONArray("nodes")
         require(nodes.length() > 0)
         val selected = profile.optInt("selected", 0).coerceIn(0, nodes.length()-1)
-        return JSONObject().put("node", nodes.getJSONObject(selected)).put("routing",profile.getJSONObject("routing")).toString()
+        val session=JSONObject().put("node", nodes.getJSONObject(selected)).put("routing",profile.getJSONObject("routing"))
+        val automatic=profile.optJSONObject("automatic")
+        if(automatic?.optBoolean("enabled")==true) {
+            val ids=automatic.getJSONArray("candidateIds");require(ids.length() in 2..16) {"自动优选须有 2–16 个候选节点"}
+            val candidates=JSONArray()
+            for(i in 0 until ids.length()) {
+                val id=ids.getString(i)
+                val node=(0 until nodes.length()).map {nodes.getJSONObject(it)}.firstOrNull {it.optString("_id")==id}
+                require(node!=null) {"自动优选候选已移除，请重新配置候选节点"}
+                candidates.put(JSONObject().put("id",id).put("node",node))
+            }
+            session.put("automatic",JSONObject().put("candidates",candidates).put("intervalSeconds",automatic.getLong("intervalSeconds")).put("toleranceMs",automatic.getLong("toleranceMs")))
+        }
+        return session
+    }
+    fun updateAutomatic(expected:String,next:JSONObject)=synchronized(lock) {
+        requireIdle();val state=load()
+        check((state.optJSONObject("automatic")?.toString() ?: "{}")==expected) {"自动优选配置已变化，请重新打开后修改"}
+        require(next.getJSONArray("candidateIds").length()<=16) {"最多 16 个候选节点"}
+        require(next.getLong("intervalSeconds") in 300..3600 && next.getLong("toleranceMs") in 0..2000) {"间隔须为 300–3600 秒，容差为 0–2000 毫秒"}
+        state.put("automatic",next)
+        val result=JSONObject(CoreBridge.validateSession(buildSession(state).toString()))
+        require(!result.has("error")) {"自动优选候选、规则或节点配置无效"};save(state)
     }
     fun updateRouting(expected: String, next: JSONObject)=synchronized(lock) {
         requireIdle()

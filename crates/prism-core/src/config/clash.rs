@@ -246,6 +246,7 @@ pub fn parse(v: &Value) -> Result<Profile> {
             if let Some(t) = n(m, "tolerance") {
                 gc.tolerance = t;
             }
+            gc.health_initial_delay = n(m, "prism-health-initial-delay").unwrap_or(1).clamp(1,3600);
             gc.use_providers = list(m, "use");
             gc.filter = s(m, "filter").filter(|f| !f.is_empty());
             gc.exclude_filter = s(m, "exclude-filter").filter(|f| !f.is_empty());
@@ -479,6 +480,7 @@ pub fn emit(p: &Profile) -> Value {
             if !matches!(gc.kind, GroupKind::Select | GroupKind::Relay) {
                 put(&mut m, "url", gc.url.clone());
                 put(&mut m, "interval", gc.interval);
+                if gc.health_initial_delay != 1 { put(&mut m, "prism-health-initial-delay", gc.health_initial_delay); }
                 if gc.kind == GroupKind::UrlTest {
                     put(&mut m, "tolerance", gc.tolerance);
                 }

@@ -21,9 +21,11 @@ pub struct Session {
     pub direct: Vec<DirectRule>,
     #[serde(default)]
     pub routing: Option<crate::routing::Routing>,
+    #[serde(default)]
+    pub automatic: Option<crate::automatic::Plan>,
 }
 
-fn supported(node: &ProxyConfig) -> bool {
+pub(crate) fn supported(node: &ProxyConfig) -> bool {
     matches!(
         node.kind(),
         ProxyKind::AnyTls
@@ -98,13 +100,16 @@ pub fn build(s: Session) -> Result<(Profile, String)> {
     if let Some(routing) = s.routing {
         rules = routing.compile()?;
     }
-    let p = Profile {
+    let mut p = Profile {
         proxies: vec![ProxyConfig {
             name: "手机节点".into(),
             ..s.node
         }],
         ..Default::default()
     };
+    if let Some(plan) = s.automatic {
+        plan.apply(&mut p)?;
+    }
     let mut doc = config::clash::emit(&p);
     doc["mixed-port"] = 0.into();
     doc.as_mapping_mut()
@@ -155,6 +160,7 @@ mod tests {
             node: node(),
             direct: vec![],
             routing: None,
+            automatic: None,
         })
         .unwrap();
         assert!(p.general.block_ipv6);
@@ -174,6 +180,7 @@ mod tests {
                 value: "a.test,REJECT\nrules:".into()
             }],
             routing: None,
+            automatic: None,
         })
         .is_err());
         assert!(build(Session {
@@ -183,6 +190,7 @@ mod tests {
                 value: "192.168.1.0/24".into()
             }],
             routing: None,
+            automatic: None,
         })
         .is_ok());
     }

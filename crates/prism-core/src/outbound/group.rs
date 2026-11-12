@@ -81,6 +81,13 @@ impl ProxyGroup {
         reg.get(&name)
     }
 
+    /// Internal reload continuity, including url-test's last chosen member.
+    pub fn restore_selection(&self, name: &str) {
+        if matches!(self.cfg.kind,GroupKind::Select|GroupKind::UrlTest) && self.cfg.proxies.iter().any(|p|p==name) {
+            *self.selected.write().unwrap()=name.to_owned();
+        }
+    }
+
     /// Relay: the members resolved to nodes, the last one rebuilt to dial
     /// through the ones before it (each hop keeps its own way of reaching
     /// its server only if it is the first).
@@ -150,7 +157,7 @@ impl ProxyGroup {
         }
         tokio::spawn(async move {
             // Give the core a moment to finish starting.
-            let mut wait = Duration::from_secs(1);
+            let mut wait = Duration::from_secs(self.cfg.health_initial_delay.clamp(1,3600));
             loop {
                 tokio::select! {
                     _ = stop.cancelled() => return,

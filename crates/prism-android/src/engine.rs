@@ -36,12 +36,31 @@ struct Running {
     direct_rules: usize,
     active_rules: usize,
     default_target: String,
+    automatic: Option<crate::automatic::Plan>,
     local_proxy: Arc<tokio::sync::Mutex<Option<crate::local_proxy::LocalProxy>>>,
     can_lan: Arc<dyn Fn() -> bool + Send + Sync>,
     proxy_notify: Arc<dyn Fn(bool, bool, u16) + Send + Sync>,
-    loopback_node_port: Option<u16>,
+    loopback_node_ports: Vec<u16>,
 }
 static ENGINE: Mutex<Option<Running>> = Mutex::new(None);
+fn current_node_name(r: &Running) -> String {
+    r.automatic
+        .as_ref()
+        .and_then(|p| {
+            let current = r
+                .hub
+                .core()
+                .tunnel
+                .reg
+                .get(crate::automatic::GROUP)
+                .and_then(|g| g.as_group().map(|g| g.now()))?;
+            p.candidates
+                .iter()
+                .find(|c| crate::automatic::name(&c.id) == current)
+                .map(|c| c.node.name.clone())
+        })
+        .unwrap_or_else(|| r.node_name.clone())
+}
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 #[no_mangle]
 pub extern "system" fn Java_dev_prism_android_CoreBridge_routing(
@@ -108,7 +127,8 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_proxyControl(
             {
                 return json!({"error":"局域网访问权限未授予"});
             }
-            if matches!(request,Request::Start{port,..} if Some(port)==r.loopback_node_port) {
+            if matches!(request,Request::Start{port,..} if port!=0 && r.loopback_node_ports.contains(&port))
+            {
                 return json!({"error":"监听端口会回连到所选本机节点，请更换端口"});
             }
             (
@@ -118,7 +138,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_proxyControl(
                 r.local_proxy.clone(),
                 r.session_id,
                 r.proxy_notify.clone(),
-                r.loopback_node_port,
+                r.loopback_node_ports.clone(),
             )
         };
         let (hub, handle, root, manager, session, notify, forbidden) = snapshot;
@@ -143,7 +163,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_proxyControl(
                         error = Some("代理服务已运行，请先停止");
                     } else {
                         match LocalProxy::start(hub, &root, port, scope).await {
-                            Ok(p) if Some(p.address.port()) == forbidden => {
+                            Ok(p) if forbidden.contains(&p.address.port()) => {
                                 p.stop().await;
                                 error = Some("监听端口会回连到所选本机节点，请更换端口");
                             }
@@ -205,7 +225,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_diagnose(
                     r.hub.clone(),
                     r.handle.clone(),
                     r.session_id,
-                    r.node_name.clone(),
+                    current_node_name(r),
                 )
             })
         else {
@@ -247,7 +267,7 @@ fn traffic_snapshot(hub: &Hub, node_id: &str, session_id: u64) -> Value {
         .map(|((node, policy), counts)| (node.clone(), policy.clone(), counts.clone()))
         .collect();
     let buckets: Vec<_> = buckets.into_iter().map(|(node, policy, counts)| json!({
-        "node":if node == "手机节点" {node_id.to_owned()} else {node}, "policy":policy,
+        "node":if node == "手机节点" {node_id.to_owned()} else if let Some(id)=node.strip_prefix("候选.") {id.to_owned()} else {node}, "policy":policy,
         "upload":counts.upload.load(Ordering::Relaxed), "download":counts.download.load(Ordering::Relaxed)
     })).collect();
     json!({"sessionId":session_id.to_string(),"buckets":buckets})
@@ -364,12 +384,20 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
             return json!({"error":"节点配置无效"});
         };
         let node_name = session.node.name.clone();
-        let loopback_node_port = match session.node.server.parse::<std::net::IpAddr>() {
-            Ok(std::net::IpAddr::V4(ip)) if ip.is_loopback() || ip.is_unspecified() => {
-                Some(session.node.port)
-            }
-            _ => None,
-        };
+        let automatic = session.automatic.clone();
+        let upstreams: Vec<_> = automatic
+            .as_ref()
+            .map(|p| p.candidates.iter().map(|c| &c.node).collect())
+            .unwrap_or_else(|| vec![&session.node]);
+        let loopback_node_ports = upstreams
+            .into_iter()
+            .filter_map(|n| match n.server.parse::<std::net::IpAddr>() {
+                Ok(std::net::IpAddr::V4(ip)) if ip.is_loopback() || ip.is_unspecified() => {
+                    Some(n.port)
+                }
+                _ => None,
+            })
+            .collect();
         let node_id = serde_json::from_str::<Value>(&raw)
             .ok()
             .and_then(|v| v["node"]["_id"].as_str().map(str::to_owned))
@@ -399,6 +427,14 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
             .unwrap_or_else(|| "SELECTED".into());
         let Ok((profile, reload)) = profile::build(session) else {
             return json!({"error":"节点或路由规则不受支持"});
+        };
+        let reload = if automatic.is_some() {
+            match crate::automatic::Plan::reload_payload(&reload) {
+                Ok(raw) => raw,
+                Err(_) => return json!({"error":"无法生成优选网络恢复配置"}),
+            }
+        } else {
+            reload
         };
         let mut slot = ENGINE.lock().unwrap_or_else(|p| p.into_inner());
         if slot.is_some() {
@@ -546,10 +582,11 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                     direct_rules,
                     active_rules,
                     default_target,
+                    automatic,
                     local_proxy: Arc::new(tokio::sync::Mutex::new(None)),
                     can_lan,
                     proxy_notify,
-                    loopback_node_port,
+                    loopback_node_ports,
                 });
                 json!({"ok":true})
             }
@@ -627,7 +664,8 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_status(
                 let connections = s.conns.lock().unwrap_or_else(|p| p.into_inner()).len();
                 json!({"running":r.alive.load(Ordering::Acquire),"upload":s.upload.load(Ordering::Relaxed),"download":s.download.load(Ordering::Relaxed),"tunReceived":received,"tunSent":sent,
                     "sessionId":r.session_id.to_string(),"uptimeMs":r.started.elapsed().as_millis() as u64,
-                    "connections":connections,"nodeName":r.node_name,"directRules":r.direct_rules,"activeRules":r.active_rules,"defaultTarget":r.default_target})
+                    "connections":connections,"nodeName":current_node_name(r),"directRules":r.direct_rules,"activeRules":r.active_rules,"defaultTarget":r.default_target,
+                    "automatic":r.automatic.as_ref().map(|p|p.snapshot(&r.hub)).unwrap_or_else(||json!({"enabled":false}))})
             }
             None => json!({"running":false,"upload":0,"download":0}),
         }

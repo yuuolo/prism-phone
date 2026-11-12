@@ -170,6 +170,8 @@ pub struct GroupConfig {
     pub interval: u64,
     /// url-test switch threshold in milliseconds.
     pub tolerance: u64,
+    /// Mobile reloads can defer a fresh round to bound network-flap probing.
+    pub health_initial_delay: u64,
     /// proxy-providers whose nodes are appended to `proxies` (Clash `use`).
     #[serde(default)]
     pub use_providers: Vec<String>,
@@ -191,6 +193,7 @@ impl GroupConfig {
             url: DEFAULT_TEST_URL.into(),
             interval: 300,
             tolerance: 50,
+            health_initial_delay: 1,
             use_providers: Vec::new(),
             filter: None,
             exclude_filter: None,

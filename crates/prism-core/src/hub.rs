@@ -100,9 +100,7 @@ impl Hub {
         for name in &old.tunnel.reg.order {
             let (Some(o), Some(n)) = (old.tunnel.reg.get(name), new.tunnel.reg.get(name)) else { continue };
             if let (Some(og), Some(ng)) = (o.as_group(), n.as_group()) {
-                if og.kind() == config::GroupKind::Select {
-                    let _ = ng.select(&og.now());
-                }
+                ng.restore_selection(&og.now());
             }
         }
         for w in &new.warnings {

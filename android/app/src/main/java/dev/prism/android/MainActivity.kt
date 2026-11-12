@@ -192,11 +192,10 @@ class MainActivity : Activity() {
     }
     private fun requestVpnConnection() {
         if(!idle() || busy) return
-        val server=runCatching {
-            val state=store.load(); val nodes=state.getJSONArray("nodes")
-            nodes.getJSONObject(state.optInt("selected").coerceIn(0,nodes.length()-1)).getString("server")
-        }.getOrElse {message("无法读取所选节点，请检查本机配置"); return}
-        if(LocalNetworkAccess.needsPermission(this,server)) {
+        val local=runCatching {
+            ProfileStore.sessionServers(JSONObject(store.session())).any {LocalNetworkAccess.needsPermission(this,it)}
+        }.getOrElse {message("所选节点或优选候选不可用，请检查节点与优选设置"); return}
+        if(local) {
             LocalNetworkAccess.request(this,120); return
         }
         val permission=VpnService.prepare(this)
@@ -353,6 +352,7 @@ class MainActivity : Activity() {
         label("路由规则",20f)
         label("按规则组和组内顺序首次命中；可直连、拒绝或使用所选节点。原有直连规则按原顺序保留。修改须先断开 VPN。",13f)
         button("管理路由规则") {startActivity(Intent(this,RoutingActivity::class.java))}
+        button("自动优选节点") {startActivity(Intent(this,AutomaticActivity::class.java))}
         }
         card {
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)

@@ -100,7 +100,7 @@ class PrismVpnService : VpnService() {
                 awaitDetached(true)
                 check(prepare(this) == null) { "请重新授权 VPN" }
                 val config = ProfileStore(this).session()
-                if(LocalNetworkAccess.needsPermission(this,JSONObject(config).getJSONObject("node").getString("server"))) throw LocalNetworkPermissionRequired()
+                if(ProfileStore.sessionServers(JSONObject(config)).any {LocalNetworkAccess.needsPermission(this,it)}) throw LocalNetworkPermissionRequired()
                 val validation = JSONObject(CoreBridge.validateSession(config))
                 check(!validation.has("error"))
                 val fd = Builder().setSession("Prism Android").setMtu(1500).setBlocking(false)
