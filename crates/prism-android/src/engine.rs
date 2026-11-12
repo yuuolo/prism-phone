@@ -37,6 +37,21 @@ struct Running {
 }
 static ENGINE: Mutex<Option<Running>> = Mutex::new(None);
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
+fn traffic_snapshot(hub: &Hub, node_id: &str, session_id: u64) -> Value {
+    let stats = hub.core().tunnel.stats.clone();
+    let buckets: Vec<_> = stats
+        .traffic
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .iter()
+        .map(|((node, policy), counts)| (node.clone(), policy.clone(), counts.clone()))
+        .collect();
+    let buckets: Vec<_> = buckets.into_iter().map(|(node, policy, counts)| json!({
+        "node":if node == "手机节点" {node_id.to_owned()} else {node}, "policy":policy,
+        "upload":counts.upload.load(Ordering::Relaxed), "download":counts.download.load(Ordering::Relaxed)
+    })).collect();
+    json!({"sessionId":session_id.to_string(),"buckets":buckets})
+}
 #[no_mangle]
 pub extern "system" fn Java_dev_prism_android_CoreBridge_traffic(
     mut env: JNIEnv,
@@ -47,19 +62,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_traffic(
         let Some(r) = slot.as_ref() else {
             return json!({"error":"内核未运行"});
         };
-        let stats = r.hub.core().tunnel.stats.clone();
-        let buckets: Vec<_> = stats
-            .traffic
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .iter()
-            .map(|((node, policy), counts)| (node.clone(), policy.clone(), counts.clone()))
-            .collect();
-        let buckets: Vec<_> = buckets.into_iter().map(|(node, policy, counts)| json!({
-            "node":if node == "手机节点" {r.node_id.clone()} else {node}, "policy":policy,
-            "upload":counts.upload.load(Ordering::Relaxed), "download":counts.download.load(Ordering::Relaxed)
-        })).collect();
-        json!({"sessionId":r.session_id.to_string(),"buckets":buckets})
+        traffic_snapshot(&r.hub, &r.node_id, r.session_id)
     })
 }
 fn text(env: &mut JNIEnv, value: Value) -> jstring {
@@ -315,6 +318,22 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_stop(_: JNIEnv, _: JCla
             let _ = running.join.join();
         }
     });
+}
+#[no_mangle]
+pub extern "system" fn Java_dev_prism_android_CoreBridge_stopAndTraffic(
+    mut env: JNIEnv,
+    _: JClass,
+) -> jstring {
+    ffi(&mut env, |_| {
+        let mut slot = ENGINE.lock().unwrap_or_else(|p| p.into_inner());
+        let Some(r) = slot.take() else {
+            return json!({"error":"内核未运行"});
+        };
+        r.cancel.cancel();
+        let _ = r.join.join();
+        // All relay tasks have stopped. Capture the final counters before dropping the hub.
+        traffic_snapshot(&r.hub, &r.node_id, r.session_id)
+    })
 }
 #[no_mangle]
 pub extern "system" fn Java_dev_prism_android_CoreBridge_networkChanged(_: JNIEnv, _: JClass) {

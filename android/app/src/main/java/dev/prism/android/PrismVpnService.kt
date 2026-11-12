@@ -178,7 +178,11 @@ class PrismVpnService : VpnService() {
     fun protectSocket(fd: Int): Boolean = protect(fd)
     private fun cleanup() {
         activeCoreTicket=-1
-        if(nativeOwner===this) {checkpointTraffic(); runCatching {CoreBridge.stop()}; nativeOwner=null}
+        if(nativeOwner===this) {
+            runCatching {val final=CoreBridge.stopAndTraffic(); trafficRecorder?.capture(final)}
+                .onFailure {runCatching {CoreBridge.stop()}; log("最后一段流量统计无法保存")}
+            nativeOwner=null
+        }
         trafficRecorder=null
         vpnNetwork?.let {pendingVpn=it}; vpnNetwork=null
         runCatching { descriptor?.close() }; descriptor = null
