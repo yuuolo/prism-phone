@@ -179,6 +179,7 @@ class MainActivity : Activity() {
         }
         card {
         label("连接质量",19f)
+        button("DNS / 网络工具") {startActivity(Intent(this,NetworkToolsActivity::class.java))}
         button("测试当前节点") {
             if(PrismVpnService.stage!="已连接") message("请先连接")
             else runTask {

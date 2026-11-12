@@ -130,6 +130,7 @@ class VpnSmokeTest {
                 val systemDns=InetAddress.getAllByName("system-${System.nanoTime()}.android.invalid")
                 assertTrue("system DNS must use VPN fake-IP",systemDns.any { it.hostAddress?.startsWith("198.18.")==true })
                 http(); udp()
+                networkDiagnostics()
                 assertTrue(socks.count.get()>0)
                 assertTrue("UDP must reach the proxy relay",socks.udpCount.get()>0)
                 val status=JSONObject(CoreBridge.status())
@@ -143,11 +144,13 @@ class VpnSmokeTest {
                 val session=status.getString("sessionId")
                 previousSession=session
                 connectionDetailsAndCancellation(session)
+                val today=LocalDate.now()
+                val beforeClear=TrafficHistory.get(context).report(today,today.plusDays(1)).daily.sumOf {it.upload}
                 val cleared=CountDownLatch(1); val clearedOk=AtomicBoolean(false)
                 PrismVpnService.clearTraffic(context) {ok -> clearedOk.set(ok); cleared.countDown()}
                 assertTrue(cleared.await(5,TimeUnit.SECONDS)); assertTrue(clearedOk.get())
-                val today=LocalDate.now()
-                assertTrue(TrafficHistory.get(context).report(today,today.plusDays(1)).daily.isEmpty())
+                assertTrue("Clear must remove prior counts while allowing new live payload",
+                    TrafficHistory.get(context).report(today,today.plusDays(1)).daily.sumOf {it.upload}<beforeClear)
                 http(); udp() // Only traffic after the active-session baseline belongs to the reset history.
                 CoreBridge.networkChanged(); Thread.sleep(600)
                 dns(false); http(); udp()
@@ -170,6 +173,7 @@ class VpnSmokeTest {
             assertEquals(0L,stopped.getLong("upload"))
             assertEquals(0L,stopped.getLong("download"))
             assertTrue(JSONObject(CoreBridge.connections("{}")).has("error"))
+            assertEquals("session",JSONObject(CoreBridge.diagnose("{\"kind\":\"tcp\",\"host\":\"example.com\",\"port\":443}")).getString("stage"))
             val day=LocalDate.now()
             val history=TrafficHistory.get(context).report(day,day.plusDays(1))
             assertTrue("Disconnect must persist forwarded payload",history.daily.sumOf {it.upload}>0 && history.daily.sumOf {it.download}>0)
@@ -190,6 +194,34 @@ class VpnSmokeTest {
             assertTrue(device.takeScreenshot(File(screenshots,"traffic-history.png")))
             device.findObject(By.text("返回连接")).click()
         }
+    }
+    private fun networkDiagnostics() {
+        val request="{\"kind\":\"tcp\",\"host\":\"203.0.113.9\",\"port\":80}"
+        val tcp=JSONObject(CoreBridge.diagnose(request))
+        assertEquals("代理",tcp.getString("path")); assertEquals("Match",tcp.getString("rule"))
+        assertEquals("手机节点",tcp.getJSONArray("chains").getString(0))
+        assertEquals("input",JSONObject(CoreBridge.diagnose("{\"kind\":\"tcp\",\"host\":\"::1\",\"port\":80}")).getString("stage"))
+        // Fixture SOCKS returns plain HTTP, so a real encrypted DNS exchange must fail.
+        // Returning a local fake-IP would incorrectly make this diagnostic succeed.
+        val dns=JSONObject(CoreBridge.diagnose("{\"kind\":\"dns\",\"host\":\"real-dns.android.invalid\"}"))
+        assertTrue(dns.has("error")); assertFalse(dns.has("addresses"))
+        assertTrue(dns.getString("stage") in listOf("dns","timeout"))
+        context.startActivity(Intent(context,NetworkToolsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val device=UiDevice.getInstance(instrumentation)
+        assertTrue(device.wait(Until.hasObject(By.desc("检测类型")),5000))
+        device.findObject(By.desc("检测类型")).click()
+        assertTrue(device.wait(Until.hasObject(By.text("TCP 连通与延迟")),3000))
+        device.findObject(By.text("TCP 连通与延迟")).click()
+        device.findObject(By.desc("检测目标")).text="203.0.113.9"
+        device.findObject(By.desc("检测端口")).text="80"
+        device.findObject(By.text("开始检测")).click()
+        val ok=device.wait(Until.hasObject(By.textContains("检测成功")),5000)
+        val dir=File(context.getExternalFilesDir(null),"screenshots").apply {mkdirs()}
+        device.takeScreenshot(File(dir,"network-tools.png"))
+        val hierarchy=File(dir,"network-tools.xml"); device.dumpWindowHierarchy(hierarchy)
+        assertTrue("Network tools UI: ${hierarchy.readText()}",ok)
+        assertTrue(device.hasObject(By.textContains("路径：代理")))
+        device.findObject(By.text("返回连接")).click()
     }
     private fun connectionDetailsAndCancellation(session: String) {
         val query=JSONObject().put("network","udp").put("route","proxy").put("search","203.0.113.7").toString()

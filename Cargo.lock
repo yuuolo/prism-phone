@@ -1619,6 +1619,7 @@ name = "prism-android"
 version = "0.1.0-alpha.1"
 dependencies = [
  "anyhow",
+ "async-trait",
  "ipnet",
  "jni 0.21.1",
  "libc",

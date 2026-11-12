@@ -37,6 +37,60 @@ struct Running {
 }
 static ENGINE: Mutex<Option<Running>> = Mutex::new(None);
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
+#[no_mangle]
+pub extern "system" fn Java_dev_prism_android_CoreBridge_diagnose(
+    mut env: JNIEnv,
+    _: JClass,
+    raw: JString,
+) -> jstring {
+    ffi(&mut env, |env| {
+        let Ok(request) =
+            input(env, &raw).and_then(|s| crate::diagnostics::Request::parse(&s).map_err(|_| ()))
+        else {
+            return json!({"error":"请输入有效域名/IPv4 和端口；当前不支持 IPv6 目标","stage":"input"});
+        };
+        let Some((hub, handle, session, node_name)) = ENGINE
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+            .filter(|r| r.alive.load(Ordering::Acquire))
+            .map(|r| {
+                (
+                    r.hub.clone(),
+                    r.handle.clone(),
+                    r.session_id,
+                    r.node_name.clone(),
+                )
+            })
+        else {
+            return json!({"error":"请先连接 VPN","stage":"session"});
+        };
+        let dns = matches!(request, crate::diagnostics::Request::Dns { .. });
+        let (tx, rx) = mpsc::channel();
+        handle.spawn(async move {
+            let core = hub.core();
+            let mut result = crate::diagnostics::run(&core, request).await;
+            result["sessionId"] = json!(session.to_string());
+            result["nodeName"] = json!(node_name);
+            if dns {
+                result["path"] = json!("所选节点 → 加密 DoH（可能命中内核缓存）");
+            }
+            let _ = tx.send(result);
+        });
+        let result = rx
+            .recv_timeout(Duration::from_secs(9))
+            .unwrap_or_else(|_| json!({"error":"检测已取消或超时","stage":"timeout"}));
+        let slot = ENGINE.lock().unwrap_or_else(|p| p.into_inner());
+        if slot
+            .as_ref()
+            .is_some_and(|r| r.session_id == session && r.alive.load(Ordering::Acquire))
+        {
+            result
+        } else {
+            json!({"error":"VPN 会话已变化，请重新检测","stage":"session"})
+        }
+    })
+}
 fn traffic_snapshot(hub: &Hub, node_id: &str, session_id: u64) -> Value {
     let stats = hub.core().tunnel.stats.clone();
     let buckets: Vec<_> = stats

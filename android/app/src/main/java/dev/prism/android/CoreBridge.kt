@@ -13,4 +13,5 @@ object CoreBridge {
     @JvmStatic external fun connections(query: String): String
     @JvmStatic external fun closeConnection(request: String): String
     @JvmStatic external fun traffic(): String
+    @JvmStatic external fun diagnose(request: String): String
 }
