@@ -3,4 +3,5 @@ pub mod connections;
 pub mod diagnostics;
 #[cfg(target_os = "android")]
 mod engine;
+pub mod local_proxy;
 pub mod profile;

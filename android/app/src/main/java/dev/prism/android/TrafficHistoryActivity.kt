@@ -45,7 +45,7 @@ class TrafficHistoryActivity : Activity() {
         query=button("查询 / 刷新") {PrismVpnService.flushTraffic {if(resumed && !isDestroyed) load()}}; root.addView(query)
         val scroll=ScrollView(this); content=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL}; scroll.addView(content)
         root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
-        root.addView(text("仅统计转发载荷（含直连），不含协议开销与内核 DNS；保留最近 400 天。每 15 秒保存，异常退出可能漏记最后一个保存间隔，系统挂起可能扩大间隔。跨日增量计入保存时本机日期。",12f))
+        root.addView(text("仅统计转发载荷（含直连和本机代理服务），不含协议开销与内核 DNS；保留最近 400 天。每 15 秒保存，异常退出可能漏记最后一个保存间隔，系统挂起可能扩大间隔。跨日增量计入保存时本机日期。",12f))
         root.addView(button("清零全部流量历史") {
             AlertDialog.Builder(this).setTitle("清零全部流量历史？").setMessage("清除日/月及节点/规则汇总。正在运行的会话会从当前计数重新累计，不会重新加回旧流量。")
                 .setNegativeButton("取消",null).setPositiveButton("清零") {_,_ ->

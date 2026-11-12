@@ -153,6 +153,8 @@ mod tests {
         .unwrap();
         assert!(p.general.block_ipv6);
         assert!(p.general.external_controller.is_none());
+        assert_eq!(p.general.mixed_port, 0);
+        assert!(!p.general.allow_lan);
         assert!(p.dns.enable && !p.dns.ipv6);
         assert!(raw.contains("proxy-only=true"));
         assert!(p.proxy_providers.is_empty() && p.rule_providers.is_empty());

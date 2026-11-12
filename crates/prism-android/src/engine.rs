@@ -34,9 +34,124 @@ struct Running {
     node_name: String,
     node_id: String,
     direct_rules: usize,
+    local_proxy: Arc<tokio::sync::Mutex<Option<crate::local_proxy::LocalProxy>>>,
+    can_lan: Arc<dyn Fn() -> bool + Send + Sync>,
+    proxy_notify: Arc<dyn Fn(bool, bool, u16) + Send + Sync>,
+    loopback_node_port: Option<u16>,
 }
 static ENGINE: Mutex<Option<Running>> = Mutex::new(None);
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
+#[no_mangle]
+pub extern "system" fn Java_dev_prism_android_CoreBridge_proxyControl(
+    mut env: JNIEnv,
+    _: JClass,
+    raw: JString,
+) -> jstring {
+    ffi(&mut env, |env| {
+        use crate::local_proxy::{LocalProxy, Request, Scope};
+        let Ok(request) = input(env, &raw).and_then(|s| Request::parse(&s).map_err(|_| ())) else {
+            return json!({"error":"代理参数无效，端口须为 0 或 1024–65535"});
+        };
+        let snapshot = {
+            let slot = ENGINE.lock().unwrap_or_else(|p| p.into_inner());
+            let Some(r) = slot.as_ref().filter(|r| r.alive.load(Ordering::Acquire)) else {
+                return if matches!(request, Request::Status {}) {
+                    json!({"running":false,"vpnRunning":false})
+                } else {
+                    json!({"error":"请先连接 VPN"})
+                };
+            };
+            if request
+                .session()
+                .is_some_and(|s| s != r.session_id.to_string())
+            {
+                return json!({"error":"VPN 会话已变化，请刷新"});
+            }
+            if matches!(
+                request,
+                Request::Start {
+                    scope: Scope::Lan,
+                    ..
+                }
+            ) && !(r.can_lan)()
+            {
+                return json!({"error":"局域网访问权限未授予"});
+            }
+            if matches!(request,Request::Start{port,..} if Some(port)==r.loopback_node_port) {
+                return json!({"error":"监听端口会回连到所选本机节点，请更换端口"});
+            }
+            (
+                r.hub.clone(),
+                r.handle.clone(),
+                r.cancel.clone(),
+                r.local_proxy.clone(),
+                r.session_id,
+                r.proxy_notify.clone(),
+                r.loopback_node_port,
+            )
+        };
+        let (hub, handle, root, manager, session, notify, forbidden) = snapshot;
+        let (tx, rx) = mpsc::channel();
+        handle.spawn(async move {
+            let mut slot = manager.lock().await;
+            if slot.as_ref().is_some_and(|p| !p.alive()) {
+                if let Some(p) = slot.take() {
+                    p.stop().await;
+                }
+            }
+            let mut error = None;
+            match request {
+                Request::Status {} => {}
+                Request::Stop { .. } => {
+                    if let Some(p) = slot.take() {
+                        p.stop().await;
+                    }
+                }
+                Request::Start { port, scope, .. } => {
+                    if slot.is_some() {
+                        error = Some("代理服务已运行，请先停止");
+                    } else {
+                        match LocalProxy::start(hub, &root, port, scope).await {
+                            Ok(p) if Some(p.address.port()) == forbidden => {
+                                p.stop().await;
+                                error = Some("监听端口会回连到所选本机节点，请更换端口");
+                            }
+                            Ok(p) => *slot = Some(p),
+                            Err(_) => error = Some("监听失败：端口冲突、系统拒绝绑定或 VPN 已停止"),
+                        }
+                    }
+                }
+            }
+            let mut result = slot
+                .as_ref()
+                .map(|p| p.status())
+                .unwrap_or_else(|| json!({"running":false}));
+            result["vpnRunning"] = json!(!root.is_cancelled());
+            result["sessionId"] = json!(session.to_string());
+            if let Some(error) = error {
+                result["error"] = json!(error);
+            }
+            if let Some(p) = slot.as_ref().filter(|p| p.alive()) {
+                notify(true, p.scope == Scope::Lan, p.address.port());
+            } else {
+                notify(false, false, 0);
+            }
+            let _ = tx.send(result);
+        });
+        let result = rx
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap_or_else(|_| json!({"error":"代理控制超时，请刷新状态"}));
+        let slot = ENGINE.lock().unwrap_or_else(|p| p.into_inner());
+        if slot
+            .as_ref()
+            .is_some_and(|r| r.session_id == session && r.alive.load(Ordering::Acquire))
+        {
+            result
+        } else {
+            json!({"error":"VPN 会话已结束，代理服务已停止"})
+        }
+    })
+}
 #[no_mangle]
 pub extern "system" fn Java_dev_prism_android_CoreBridge_diagnose(
     mut env: JNIEnv,
@@ -218,6 +333,12 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
             return json!({"error":"节点配置无效"});
         };
         let node_name = session.node.name.clone();
+        let loopback_node_port = match session.node.server.parse::<std::net::IpAddr>() {
+            Ok(std::net::IpAddr::V4(ip)) if ip.is_loopback() || ip.is_unspecified() => {
+                Some(session.node.port)
+            }
+            _ => None,
+        };
         let node_id = serde_json::from_str::<Value>(&raw)
             .ok()
             .and_then(|v| v["node"]["_id"].as_str().map(str::to_owned))
@@ -237,6 +358,42 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
             return json!({"error":"无法接入 VPN 服务"});
         };
         let vm = Arc::new(vm);
+        let notify_vm = vm.clone();
+        let notify_service = service.clone();
+        let proxy_notify = Arc::new(move |running: bool, lan: bool, port: u16| {
+            if let Ok(mut env) = notify_vm.attach_current_thread() {
+                let _ = env.call_method(
+                    notify_service.as_obj(),
+                    "onProxyStateChanged",
+                    "(ZZI)V",
+                    &[
+                        JValue::Bool(running as u8),
+                        JValue::Bool(lan as u8),
+                        JValue::Int(port as i32),
+                    ],
+                );
+                let _ = env.exception_clear();
+            }
+        });
+        let permission_vm = vm.clone();
+        let permission_service = service.clone();
+        let can_lan = Arc::new(move || {
+            let Ok(mut env) = permission_vm.attach_current_thread() else {
+                return false;
+            };
+            let result = env
+                .call_method(
+                    permission_service.as_obj(),
+                    "hasLocalNetworkAccess",
+                    "()Z",
+                    &[],
+                )
+                .and_then(|v| v.z());
+            if result.is_err() {
+                let _ = env.exception_clear();
+            }
+            result.unwrap_or(false)
+        });
         let vm_protect = vm.clone();
         let service_protect = service.clone();
         let dup = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) };
@@ -334,6 +491,10 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                     node_name,
                     node_id,
                     direct_rules,
+                    local_proxy: Arc::new(tokio::sync::Mutex::new(None)),
+                    can_lan,
+                    proxy_notify,
+                    loopback_node_port,
                 });
                 json!({"ok":true})
             }

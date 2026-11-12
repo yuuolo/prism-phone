@@ -143,6 +143,21 @@ async fn connect_addr(addr: SocketAddr) -> io::Result<TcpStream> {
     Ok(s)
 }
 
+/// Mobile proxy listeners must bypass the VPN too: accepted TCP sockets inherit
+/// the protected mark, and UDP replies must reach the physical LAN peer.
+pub async fn mobile_tcp_listener(addr: SocketAddr) -> io::Result<tokio::net::TcpListener> {
+    let socket = if addr.is_ipv4() {TcpSocket::new_v4()?} else {TcpSocket::new_v6()?};
+    #[cfg(unix)] socket.set_reuseaddr(true)?;
+    #[cfg(target_os = "android")] protect_android(raw(&socket))?;
+    socket.bind(addr)?;
+    socket.listen(256)
+}
+pub async fn mobile_udp_listener(addr: SocketAddr) -> io::Result<UdpSocket> {
+    let socket = UdpSocket::bind(addr).await?;
+    #[cfg(target_os = "android")] protect_android(raw(&socket))?;
+    Ok(socket)
+}
+
 static RESOLVER: std::sync::RwLock<Option<Arc<crate::dns::Resolver>>> = std::sync::RwLock::new(None);
 
 /// Name resolution for the core's own connections goes through the DNS

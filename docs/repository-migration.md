@@ -8,6 +8,8 @@
 
 ## 更新入口
 
+本机代理服务增加 `inbound.rs` 的受控监听入口、关联式 SOCKS UDP 与取消清理，`tunnel.rs` 增加任务中止时连接表清理和受限 UDP 会话，`net.rs` 增加 Android VPN 保护的监听 socket。原有桌面监听入口保持原行为；手机服务独立管理生命周期，断开 VPN 时回收。同步上游时需保留并重跑本机代理、流量、DNS 和网络恢复验收。
+
 - 新构建检查 `https://github.com/yuuolo/prism-phone/releases/download/android-updates/android-update.json`。
 - 已安装的 Android 0.2.0-beta.1 只接受 `yuuolo/prism` 的 APK 下载路径。因此旧仓库的 `android-updates/android-update.json` 必须继续维护，不能直接改成指向新仓库的 APK。
 - `scripts/android/publish.ps1` 从本仓库通过构建及模拟器验证的 CI 下载 APK，本机签名，在本仓库发布，同时向旧仓库镜像同一个签名 APK，并生成使用旧下载路径的兼容清单。两边 SHA-256、版本、包名及证书相同。脚本拒绝回退版本或替换同版本 APK。

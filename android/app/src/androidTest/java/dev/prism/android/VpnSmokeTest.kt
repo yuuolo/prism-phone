@@ -28,10 +28,11 @@ class VpnSmokeTest {
         while(System.currentTimeMillis()<end) {if(PrismVpnService.stage==stage) return; Thread.sleep(100)}
         fail("VPN state: ${PrismVpnService.stage} / ${PrismVpnService.detail}, expected $stage")
     }
-    private class Socks : AutoCloseable {
+    internal class Socks : AutoCloseable {
         val listener=ServerSocket(0,50,InetAddress.getByName("127.0.0.1"))
         val count=AtomicInteger()
         val udpCount=AtomicInteger()
+        val ipv6Count=AtomicInteger()
         private val pool=Executors.newCachedThreadPool()
         init {pool.execute {while(!listener.isClosed) try {val s=listener.accept(); pool.execute {serve(s)}} catch (_: IOException) {break}}}
         private fun serve(s: Socket) {s.use {
@@ -40,7 +41,7 @@ class VpnSmokeTest {
                 val input=DataInputStream(s.getInputStream()); val output=s.getOutputStream()
                 check(input.readUnsignedByte()==5); val n=input.readUnsignedByte(); input.readFully(ByteArray(n)); output.write(byteArrayOf(5,0)); output.flush()
                 check(input.readUnsignedByte()==5); val command=input.readUnsignedByte(); input.readUnsignedByte()
-                when(input.readUnsignedByte()) {1 -> input.readFully(ByteArray(4)); 4 -> input.readFully(ByteArray(16)); 3 -> input.readFully(ByteArray(input.readUnsignedByte())); else -> error("address")}
+                when(input.readUnsignedByte()) {1 -> input.readFully(ByteArray(4)); 4 -> {ipv6Count.incrementAndGet(); input.readFully(ByteArray(16))}; 3 -> input.readFully(ByteArray(input.readUnsignedByte())); else -> error("address")}
                 input.readUnsignedShort()
                 if(command==3) {
                     DatagramSocket(0,InetAddress.getByName("127.0.0.1")).use { relay ->
@@ -158,12 +159,11 @@ class VpnSmokeTest {
                 assertEquals(session,reloaded.getString("sessionId"))
                 assertTrue(reloaded.getLong("uptimeMs")>=status.getLong("uptimeMs"))
                 assertTrue(reloaded.getLong("upload")>=status.getLong("upload"))
-                val before=socks.count.get()
                 Socket().use {s ->
                     s.soTimeout=2000
                     try {s.connect(InetSocketAddress("2001:db8::1",80),3000); s.getOutputStream().write("GET / HTTP/1.0\r\n\r\n".toByteArray()); assertTrue(s.getInputStream().read()<0)} catch (_: IOException) {}
                 }
-                assertEquals("IPv6 client targets must not reach the proxy",before,socks.count.get())
+                assertEquals("IPv6 client targets must not reach the proxy",0,socks.ipv6Count.get())
             } finally {
                 context.startService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.DISCONNECT))
                 await("已断开")

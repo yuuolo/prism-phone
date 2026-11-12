@@ -172,11 +172,12 @@ class MainActivity : Activity() {
             dashboard=label("内核未运行",14f)
             button("查看连接与路由") {startActivity(Intent(this,ConnectionsActivity::class.java))}
             button("流量历史") {startActivity(Intent(this,TrafficHistoryActivity::class.java))}
-            label("速率为相邻采样间的平均值。累计仅含本次 VPN 会话的 TCP/UDP 转发载荷（含直连），不含协议开销和内核 DNS 查询；断开后重置。",12f)
+            label("速率为相邻采样间的平均值。累计仅含本次 VPN 会话的 TCP/UDP 转发载荷（含直连和本机代理服务），不含协议开销和内核 DNS 查询；断开后重置。",12f)
         }
         card {
         label("连接质量",19f)
         button("DNS / 网络工具") {startActivity(Intent(this,NetworkToolsActivity::class.java))}
+        button("本机 HTTP / SOCKS5 服务") {startActivity(Intent(this,LocalProxyActivity::class.java))}
         button("测试当前节点") {
             if(PrismVpnService.stage!="已连接") message("请先连接")
             else runTask {

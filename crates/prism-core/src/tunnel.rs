@@ -121,6 +121,14 @@ pub struct Stats {
     pub traffic: Mutex<BTreeMap<(String, String), Arc<Traffic>>>,
 }
 
+/// Managed mobile listeners can abort client tasks; always remove their row.
+struct ConnGuard { stats: Arc<Stats>, id: String }
+impl Drop for ConnGuard {
+    fn drop(&mut self) {
+        self.stats.conns.lock().unwrap_or_else(|p| p.into_inner()).remove(&self.id);
+    }
+}
+
 impl Stats {
     pub fn snapshot(&self) -> Vec<Arc<Conn>> {
         let mut v: Vec<_> = self.conns.lock().unwrap().values().cloned().collect();
@@ -291,6 +299,7 @@ impl Tunnel {
     /// Relays until both directions finish or the connection is closed via API.
     pub async fn relay<C: ProxyStream>(&self, client: C, dialed: Dialed, meta: Metadata, initial: &[u8]) {
         let conn = self.register(meta, dialed.chains, dialed.rule, dialed.rule_payload);
+        let _guard = ConnGuard { stats: self.stats.clone(), id: conn.id.clone() };
 
         let (cr, cw) = tokio::io::split(client);
         let (rr, mut rw) = tokio::io::split(dialed.stream);
@@ -316,7 +325,6 @@ impl Tunnel {
             }
             _ = conn.cancel.cancelled() => {}
         }
-        self.stats.conns.lock().unwrap().remove(&conn.id);
     }
 }
 
@@ -351,6 +359,7 @@ pub struct UdpPacket {
 
 struct UdpSession {
     tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    cancel: CancellationToken,
 }
 
 /// UDP session table for one inbound: one outbound session per
@@ -360,30 +369,44 @@ pub struct UdpNat {
     inbound: &'static str,
     sessions: Mutex<HashMap<(SocketAddr, Address), Arc<UdpSession>>>,
     reply: tokio::sync::mpsc::Sender<UdpPacket>,
+    cancel: CancellationToken,
+    session_limit: usize,
+    queue_size: usize,
 }
 
 impl UdpNat {
     pub fn new(inbound: &'static str, reply: tokio::sync::mpsc::Sender<UdpPacket>) -> Arc<Self> {
-        Arc::new(UdpNat { inbound, sessions: Mutex::new(HashMap::new()), reply })
+        Arc::new(UdpNat { inbound, sessions: Mutex::new(HashMap::new()), reply, cancel: CancellationToken::new(), session_limit: usize::MAX, queue_size: 256 })
+    }
+    pub fn with_cancel(inbound: &'static str, reply: tokio::sync::mpsc::Sender<UdpPacket>, cancel: CancellationToken) -> Arc<Self> {
+        Arc::new(UdpNat { inbound, sessions: Mutex::new(HashMap::new()), reply, cancel, session_limit: 128, queue_size: 16 })
     }
 
     /// Sends a client datagram, opening a session (routed through `tunnel`)
     /// on first use.
     pub fn send(self: &Arc<Self>, tunnel: &Arc<Tunnel>, pkt: UdpPacket) {
+        self.send_scoped(tunnel, pkt, &self.cancel);
+    }
+    pub fn send_scoped(self: &Arc<Self>, tunnel: &Arc<Tunnel>, pkt: UdpPacket, scope: &CancellationToken) {
+        if self.cancel.is_cancelled() || scope.is_cancelled() {return}
         let key = (pkt.src, pkt.dst.clone());
-        let existing = self.sessions.lock().unwrap().get(&key).cloned();
-        if let Some(s) = existing {
-            let _ = s.tx.try_send(pkt.data);
-            return;
-        }
-        let (tx, rx) = tokio::sync::mpsc::channel(256);
-        let session = Arc::new(UdpSession { tx });
-        let _ = session.tx.try_send(pkt.data);
-        self.sessions.lock().unwrap().insert(key.clone(), session.clone());
+        let (session, rx) = {
+            let mut sessions = self.sessions.lock().unwrap();
+            if let Some(s) = sessions.get(&key).filter(|s| !s.cancel.is_cancelled()) {
+                let _ = s.tx.try_send(pkt.data); return;
+            }
+            sessions.remove(&key);
+            if sessions.len() >= self.session_limit {return}
+            let (tx, rx) = tokio::sync::mpsc::channel(self.queue_size);
+            let session = Arc::new(UdpSession {tx, cancel: scope.child_token()});
+            let _ = session.tx.try_send(pkt.data);
+            sessions.insert(key.clone(),session.clone());
+            (session,rx)
+        };
         let nat = self.clone();
         let tunnel = tunnel.clone();
         tokio::spawn(async move {
-            nat.run_session(tunnel, key.0, key.1.clone(), rx).await;
+            nat.run_session(tunnel, key.0, key.1.clone(), rx, session.cancel.clone()).await;
             let mut map = nat.sessions.lock().unwrap();
             if map.get(&key).is_some_and(|s| Arc::ptr_eq(s, &session)) {
                 map.remove(&key);
@@ -391,10 +414,12 @@ impl UdpNat {
         });
     }
 
-    async fn run_session(&self, tunnel: Arc<Tunnel>, src: SocketAddr, dst: Address, mut rx: tokio::sync::mpsc::Receiver<Vec<u8>>) {
+    async fn run_session(&self, tunnel: Arc<Tunnel>, src: SocketAddr, dst: Address, mut rx: tokio::sync::mpsc::Receiver<Vec<u8>>, scope: CancellationToken) {
         let mut meta = Metadata::new(Network::Udp, self.inbound, src, dst.clone(), dst.ip());
-        let Ok(dialed) = tunnel.dial_udp(&mut meta).await else { return };
+        let dialed = tokio::select! { _ = self.cancel.cancelled() => return, _ = scope.cancelled() => return, result = tunnel.dial_udp(&mut meta) => result };
+        let Ok(dialed) = dialed else { return };
         let conn = tunnel.register(meta, dialed.chains, dialed.rule, dialed.rule_payload);
+        let _guard = ConnGuard { stats: tunnel.stats.clone(), id: conn.id.clone() };
         let UdpPipe { tx: out, rx: mut inc } = dialed.pipe;
         let stats = tunnel.stats.clone();
         // DNS sessions are short-lived; everything else idles out after 60s.
@@ -421,8 +446,9 @@ impl UdpNat {
                 },
                 _ = tokio::time::sleep(idle) => break,
                 _ = conn.cancel.cancelled() => break,
+                _ = self.cancel.cancelled() => break,
+                _ = scope.cancelled() => break,
             }
         }
-        tunnel.stats.conns.lock().unwrap().remove(&conn.id);
     }
 }

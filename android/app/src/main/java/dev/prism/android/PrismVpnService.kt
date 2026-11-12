@@ -53,10 +53,14 @@ class PrismVpnService : VpnService() {
     @Volatile private var activeCoreTicket = -1
     private var latestStartId = 0
     private var trafficRecorder: TrafficRecorder?=null
+    private var proxySummary=""
     private val trafficTick=object : Runnable {
         override fun run() {
             if(destroyed) return
-            serial.execute {if(nativeOwner===this@PrismVpnService) checkpointTraffic()}
+            serial.execute {if(nativeOwner===this@PrismVpnService) {
+                checkpointTraffic()
+                runCatching {CoreBridge.proxyControl("{\"action\":\"status\"}")}
+            }}
             main.postDelayed(this,15000)
         }
     }
@@ -77,7 +81,7 @@ class PrismVpnService : VpnService() {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val stop = PendingIntent.getService(this, 1, Intent(this, PrismVpnService::class.java).setAction(DISCONNECT), PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, "vpn").setSmallIcon(dev.prism.android.R.drawable.ic_prism).setContentTitle("Prism Android")
-            .setContentText("VPN 正在连接或运行").setContentIntent(open).setOngoing(true).addAction(Notification.Action.Builder(null, "断开", stop).build()).build()
+            .setContentText(if(proxySummary.isEmpty()) "VPN 正在连接或运行" else "VPN 运行 · $proxySummary").setContentIntent(open).setOngoing(true).addAction(Notification.Action.Builder(null, "断开", stop).build()).build()
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         latestStartId=startId
@@ -180,6 +184,20 @@ class PrismVpnService : VpnService() {
         main.post {if(!destroyed && activeCoreTicket==ticket && generation.get()==ticket && stage in listOf("正在连接","已连接")) disconnect("内核已停止")}
     }
     fun protectSocket(fd: Int): Boolean = protect(fd)
+    fun hasLocalNetworkAccess(): Boolean = LocalNetworkAccess.granted(this)
+    fun onProxyStateChanged(running: Boolean,lan: Boolean,port: Int) {
+        val ticket=activeCoreTicket
+        if(ticket<0) return
+        main.post {
+            if(!destroyed && visibleService===this && activeCoreTicket==ticket && generation.get()==ticket) {
+                val next=if(running) (if(lan) "局域网代理共享" else "本机代理")+" :$port" else ""
+                if(next!=proxySummary) {
+                    proxySummary=next; log(if(next.isEmpty()) "代理服务已停止" else next)
+                    if(stage=="已连接") getSystemService(NotificationManager::class.java).notify(1,notification())
+                }
+            }
+        }
+    }
     private fun cleanup() {
         activeCoreTicket=-1
         if(nativeOwner===this) {
@@ -208,6 +226,7 @@ class PrismVpnService : VpnService() {
         if (destroyed) return
         val ticket = generation.incrementAndGet()
         main.removeCallbacks(trafficTick)
+        proxySummary=""
         val stopId=latestStartId
         callback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }; callback = null
         publish("正在断开")
