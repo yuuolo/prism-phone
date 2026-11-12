@@ -33,6 +33,7 @@ class ConnectionsActivity : Activity() {
     }
     private fun button(value: String,action: ()->Unit)=Button(this).apply {
         text=value; isAllCaps=false; setTextColor(PrismStyle.purple); setOnClickListener {action()}
+        background=PrismStyle.shape(android.graphics.Color.rgb(239,234,255),dp(12).toFloat()); minHeight=dp(48)
     }
     private fun spinner(values: List<String>)=Spinner(this).apply {
         adapter=ArrayAdapter(this@ConnectionsActivity,android.R.layout.simple_spinner_dropdown_item,values)
@@ -61,8 +62,10 @@ class ConnectionsActivity : Activity() {
         network=spinner(listOf("全部网络","TCP","UDP")); network.setSelection(saved?.getInt("network",0) ?: 0)
         route=spinner(listOf("全部出口","直连","代理")); route.setSelection(saved?.getInt("route",0) ?: 0)
         sort=spinner(listOf("最新连接","流量最多","目的地排序")); sort.setSelection(saved?.getInt("sort",0) ?: 0)
+        network.contentDescription="网络筛选"; route.contentDescription="出口筛选"; sort.contentDescription="连接排序"
         val filters=LinearLayout(this)
-        listOf(network,route,sort).forEach {filters.addView(it,LinearLayout.LayoutParams(0,dp(48),1f))}; root.addView(filters)
+        listOf(network,route).forEach {filters.addView(it,LinearLayout.LayoutParams(0,dp(48),1f))}; root.addView(filters)
+        root.addView(sort,LinearLayout.LayoutParams(-1,dp(48)))
         summary=label("正在读取…"); root.addView(summary)
         val scroll=ScrollView(this)
         rows=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL}; scroll.addView(rows)
