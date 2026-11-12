@@ -32,6 +32,7 @@ class VpnSmokeTest {
         val listener=ServerSocket(0,50,InetAddress.getByName("127.0.0.1"))
         val count=AtomicInteger()
         val udpCount=AtomicInteger()
+        val localProxyUdpCount=AtomicInteger()
         val ipv6Count=AtomicInteger()
         private val pool=Executors.newCachedThreadPool()
         init {pool.execute {while(!listener.isClosed) try {val s=listener.accept(); pool.execute {serve(s)}} catch (_: IOException) {break}}}
@@ -53,7 +54,10 @@ class VpnSmokeTest {
                             val packet=DatagramPacket(ByteArray(65535),65535)
                             try {relay.receive(packet)} catch (_: SocketTimeoutException) {continue}
                             check(packet.length>=10 && packet.data[2].toInt()==0)
-                            udpCount.incrementAndGet(); relay.send(packet)
+                            udpCount.incrementAndGet()
+                            val localPayload="real-local-proxy-udp".toByteArray()
+                            if(packet.length>=localPayload.size && packet.data.copyOfRange(packet.length-localPayload.size,packet.length).contentEquals(localPayload)) localProxyUdpCount.incrementAndGet()
+                            relay.send(packet)
                         }
                     }
                     return

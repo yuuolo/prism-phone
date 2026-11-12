@@ -68,16 +68,16 @@ class LocalProxyTest {
                 socket.soTimeout=4000; socket.send(DatagramPacket(packet,packet.size,destination,relay))
                 val answer=DatagramPacket(ByteArray(512),512); socket.receive(answer)
                 assertArrayEquals(payload,answer.data.copyOfRange(answer.length-payload.size,answer.length))
-                assertTrue(socks.udpCount.get()>0)
+                assertTrue(socks.localProxyUdpCount.get()>0)
             } finally {control.close()}
             val end=System.currentTimeMillis()+3000
             val query="{\"network\":\"udp\",\"search\":\"203.0.113.77:3478\"}"
             while(JSONObject(CoreBridge.connections(query)).getInt("matched")>0 && System.currentTimeMillis()<end) Thread.sleep(50)
             assertEquals(0,JSONObject(CoreBridge.connections(query)).getInt("matched"))
-            socket.soTimeout=300; val before=socks.udpCount.get()
+            socket.soTimeout=300; val before=socks.localProxyUdpCount.get()
             socket.send(DatagramPacket(packet,packet.size,destination,port))
             try {socket.receive(DatagramPacket(ByteArray(512),512)); fail("Closed association still forwards UDP")} catch(_: SocketTimeoutException) {}
-            assertEquals(before,socks.udpCount.get())
+            assertEquals(before,socks.localProxyUdpCount.get())
         }
     }
     private fun noticeContains(value: String) {
