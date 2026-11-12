@@ -202,9 +202,11 @@ class VpnSmokeTest {
             // Show the real connection in the foreground UI before closing it.
             context.startActivity(Intent(context,ConnectionsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             val device=UiDevice.getInstance(instrumentation)
-            assertTrue(device.wait(Until.hasObject(By.text("hold.invalid:80")),5000))
             val dir=File(context.getExternalFilesDir(null),"screenshots").apply {mkdirs()}
+            val visible=device.wait(Until.hasObject(By.text("hold.invalid:80")),6000)
             assertTrue(device.takeScreenshot(File(dir,"connections.png")))
+            val hierarchy=File(dir,"connections.xml"); device.dumpWindowHierarchy(hierarchy)
+            assertTrue("Connection UI: ${hierarchy.readText()}; core: ${CoreBridge.connections(tcpQuery)}",visible)
             assertTrue(close(tcp.getString("id")).getBoolean("closed"))
             // A readable EOF proves the relay was cancelled, rather than only hidden.
             try {socket.getInputStream().readBytes()}

@@ -39,7 +39,9 @@ class ConnectionsActivity : Activity() {
     }
     override fun onCreate(saved: Bundle?) {
         super.onCreate(saved)
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         val root=LinearLayout(this).apply {
+            isFocusableInTouchMode=true
             orientation=LinearLayout.VERTICAL; setPadding(dp(18),dp(12),dp(18),dp(12)); setBackgroundColor(PrismStyle.background)
             setOnApplyWindowInsetsListener {v,insets ->
                 if(Build.VERSION.SDK_INT>=30) {
@@ -70,7 +72,7 @@ class ConnectionsActivity : Activity() {
         previous=button("上一页") {offset=(offset-50).coerceAtLeast(0); changed(false)}
         next=button("下一页") {offset+=50; changed(false)}
         pages.addView(previous,LinearLayout.LayoutParams(0,-2,1f)); pages.addView(next,LinearLayout.LayoutParams(0,-2,1f)); root.addView(pages)
-        setContentView(root); root.requestApplyInsets()
+        setContentView(root); root.requestFocus(); root.requestApplyInsets()
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?,start: Int,count: Int,after: Int) {}
             override fun onTextChanged(s: CharSequence?,start: Int,before: Int,count: Int) {changed()}
