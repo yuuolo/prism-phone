@@ -1,7 +1,7 @@
 //! Routes inbound connections to outbounds and relays traffic, keeping the
 //! per-connection statistics exposed by the Clash API.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -101,7 +101,16 @@ pub struct Conn {
     pub start: DateTime<Utc>,
     pub upload: AtomicU64,
     pub download: AtomicU64,
+    pub traffic: Arc<Traffic>,
     cancel: CancellationToken,
+}
+
+/// Payload counters survive connection removal and hub reloads. Keys contain
+/// only the actual outbound and rule category, never destination history.
+#[derive(Default)]
+pub struct Traffic {
+    pub upload: AtomicU64,
+    pub download: AtomicU64,
 }
 
 #[derive(Default)]
@@ -109,6 +118,7 @@ pub struct Stats {
     pub upload: AtomicU64,
     pub download: AtomicU64,
     pub conns: Mutex<HashMap<String, Arc<Conn>>>,
+    pub traffic: Mutex<BTreeMap<(String, String), Arc<Traffic>>>,
 }
 
 impl Stats {
@@ -235,6 +245,8 @@ impl Tunnel {
     }
 
     fn register(&self, meta: Metadata, chains: Vec<String>, rule: String, rule_payload: String) -> Arc<Conn> {
+        let key = (chains.first().cloned().unwrap_or_else(|| "UNKNOWN".into()), rule.clone());
+        let traffic = self.stats.traffic.lock().unwrap().entry(key).or_default().clone();
         let conn = Arc::new(Conn {
             id: uuid::Uuid::new_v4().to_string(),
             meta,
@@ -244,6 +256,7 @@ impl Tunnel {
             start: Utc::now(),
             upload: AtomicU64::new(0),
             download: AtomicU64::new(0),
+            traffic,
             cancel: CancellationToken::new(),
         });
         self.stats.conns.lock().unwrap().insert(conn.id.clone(), conn.clone());
@@ -288,10 +301,11 @@ impl Tunnel {
                 rw.flush().await?;
                 conn.upload.fetch_add(initial.len() as u64, Ordering::Relaxed);
                 stats.upload.fetch_add(initial.len() as u64, Ordering::Relaxed);
+                conn.traffic.upload.fetch_add(initial.len() as u64, Ordering::Relaxed);
             }
             tokio::try_join!(
-                copy_count(cr, rw, &conn.upload, &stats.upload),
-                copy_count(rr, cw, &conn.download, &stats.download),
+                copy_count(cr, rw, &conn.upload, &stats.upload, &conn.traffic.upload),
+                copy_count(rr, cw, &conn.download, &stats.download, &conn.traffic.download),
             )
         };
         tokio::select! {
@@ -306,7 +320,7 @@ impl Tunnel {
     }
 }
 
-async fn copy_count<R, W>(mut r: R, mut w: W, conn: &AtomicU64, total: &AtomicU64) -> io::Result<()>
+async fn copy_count<R, W>(mut r: R, mut w: W, conn: &AtomicU64, total: &AtomicU64, traffic: &AtomicU64) -> io::Result<()>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
@@ -322,6 +336,7 @@ where
         w.flush().await?;
         conn.fetch_add(n as u64, Ordering::Relaxed);
         total.fetch_add(n as u64, Ordering::Relaxed);
+        traffic.fetch_add(n as u64, Ordering::Relaxed);
     }
 }
 
@@ -390,6 +405,7 @@ impl UdpNat {
                     Some(p) => {
                         conn.upload.fetch_add(p.len() as u64, Ordering::Relaxed);
                         stats.upload.fetch_add(p.len() as u64, Ordering::Relaxed);
+                        conn.traffic.upload.fetch_add(p.len() as u64, Ordering::Relaxed);
                         if out.send(p).await.is_err() { break; }
                     }
                     None => break,
@@ -398,6 +414,7 @@ impl UdpNat {
                     Some(p) => {
                         conn.download.fetch_add(p.len() as u64, Ordering::Relaxed);
                         stats.download.fetch_add(p.len() as u64, Ordering::Relaxed);
+                        conn.traffic.download.fetch_add(p.len() as u64, Ordering::Relaxed);
                         if self.reply.send(UdpPacket { src, dst: dst.clone(), data: p }).await.is_err() { break; }
                     }
                     None => break,

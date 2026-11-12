@@ -32,10 +32,36 @@ struct Running {
     started: Instant,
     session_id: u64,
     node_name: String,
+    node_id: String,
     direct_rules: usize,
 }
 static ENGINE: Mutex<Option<Running>> = Mutex::new(None);
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
+#[no_mangle]
+pub extern "system" fn Java_dev_prism_android_CoreBridge_traffic(
+    mut env: JNIEnv,
+    _: JClass,
+) -> jstring {
+    ffi(&mut env, |_| {
+        let slot = ENGINE.lock().unwrap_or_else(|p| p.into_inner());
+        let Some(r) = slot.as_ref() else {
+            return json!({"error":"内核未运行"});
+        };
+        let stats = r.hub.core().tunnel.stats.clone();
+        let buckets: Vec<_> = stats
+            .traffic
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .iter()
+            .map(|((node, policy), counts)| (node.clone(), policy.clone(), counts.clone()))
+            .collect();
+        let buckets: Vec<_> = buckets.into_iter().map(|(node, policy, counts)| json!({
+            "node":if node == "手机节点" {r.node_id.clone()} else {node}, "policy":policy,
+            "upload":counts.upload.load(Ordering::Relaxed), "download":counts.download.load(Ordering::Relaxed)
+        })).collect();
+        json!({"sessionId":r.session_id.to_string(),"buckets":buckets})
+    })
+}
 fn text(env: &mut JNIEnv, value: Value) -> jstring {
     env.new_string(value.to_string())
         .map(|s| s.into_raw())
@@ -135,6 +161,10 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
             return json!({"error":"节点配置无效"});
         };
         let node_name = session.node.name.clone();
+        let node_id = serde_json::from_str::<Value>(&raw)
+            .ok()
+            .and_then(|v| v["node"]["_id"].as_str().map(str::to_owned))
+            .unwrap_or_else(|| "legacy".into());
         let direct_rules = session.direct.len();
         let Ok((profile, reload)) = profile::build(session) else {
             return json!({"error":"节点或直连规则不受支持"});
@@ -245,6 +275,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                     started,
                     session_id: NEXT_SESSION.fetch_add(1, Ordering::Relaxed),
                     node_name,
+                    node_id,
                     direct_rules,
                 });
                 json!({"ok":true})

@@ -12,7 +12,11 @@ import org.json.JSONObject
 import java.io.*
 import java.net.*
 import java.util.concurrent.Executors
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
 
 @RunWith(AndroidJUnit4::class)
 class VpnSmokeTest {
@@ -139,6 +143,12 @@ class VpnSmokeTest {
                 val session=status.getString("sessionId")
                 previousSession=session
                 connectionDetailsAndCancellation(session)
+                val cleared=CountDownLatch(1); val clearedOk=AtomicBoolean(false)
+                PrismVpnService.clearTraffic(context) {ok -> clearedOk.set(ok); cleared.countDown()}
+                assertTrue(cleared.await(5,TimeUnit.SECONDS)); assertTrue(clearedOk.get())
+                val today=LocalDate.now()
+                assertTrue(TrafficHistory.get(context).report(today,today.plusDays(1)).daily.isEmpty())
+                http(); udp() // Only traffic after the active-session baseline belongs to the reset history.
                 CoreBridge.networkChanged(); Thread.sleep(600)
                 dns(false); http(); udp()
                 val reloaded=JSONObject(CoreBridge.status())
@@ -160,6 +170,10 @@ class VpnSmokeTest {
             assertEquals(0L,stopped.getLong("upload"))
             assertEquals(0L,stopped.getLong("download"))
             assertTrue(JSONObject(CoreBridge.connections("{}")).has("error"))
+            val day=LocalDate.now()
+            val history=TrafficHistory.get(context).report(day,day.plusDays(1))
+            assertTrue("Disconnect must persist forwarded payload",history.daily.sumOf {it.upload}>0 && history.daily.sumOf {it.download}>0)
+            assertTrue(history.nodes.any {it.label==store.load().getJSONArray("nodes").getJSONObject(0).getString("_id")})
             repeat(3) {
                 context.startForegroundService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT))
                 try {
@@ -169,6 +183,12 @@ class VpnSmokeTest {
                 }
                 finally { context.startService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.DISCONNECT)); await("已断开") }
             }
+            context.startActivity(Intent(context,TrafficHistoryActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            val device=UiDevice.getInstance(instrumentation)
+            assertTrue(device.wait(Until.hasObject(By.textStartsWith("合计 ↑")),5000))
+            val screenshots=File(context.getExternalFilesDir(null),"screenshots").apply {mkdirs()}
+            assertTrue(device.takeScreenshot(File(screenshots,"traffic-history.png")))
+            device.findObject(By.text("返回连接")).click()
         }
     }
     private fun connectionDetailsAndCancellation(session: String) {
@@ -215,5 +235,14 @@ class VpnSmokeTest {
             device.findObject(By.text("返回连接")).click()
         }
         udp() // Closing one UDP session must not break subsequent forwarding.
+        val accounting=JSONObject(CoreBridge.traffic())
+        assertEquals(session,accounting.getString("sessionId"))
+        val buckets=accounting.getJSONArray("buckets")
+        assertTrue((0 until buckets.length()).any {
+            buckets.getJSONObject(it).let {b -> b.getString("policy")=="Match" && b.getLong("upload")>=42 && b.getLong("download")>=38}
+        })
+        val saved=CountDownLatch(1)
+        PrismVpnService.flushTraffic {saved.countDown()}
+        assertTrue("History checkpoint must finish",saved.await(5,TimeUnit.SECONDS))
     }
 }

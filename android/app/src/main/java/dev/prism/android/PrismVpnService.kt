@@ -2,6 +2,7 @@ package dev.prism.android
 
 import android.app.*
 import android.content.Intent
+import android.content.Context
 import android.content.pm.ServiceInfo
 import android.net.*
 import android.os.*
@@ -24,6 +25,22 @@ class PrismVpnService : VpnService() {
         private var pendingVpn: Network? = null
         @Volatile private var visibleService: PrismVpnService? = null
         @Synchronized fun logs() = events.toList()
+        fun flushTraffic(done: ()->Unit) {
+            engineSerial.execute {
+                nativeOwner?.checkpointTraffic()
+                Handler(Looper.getMainLooper()).post {done()}
+            }
+        }
+        fun clearTraffic(context: Context,done: (Boolean)->Unit) {
+            engineSerial.execute {
+                val ok=runCatching {
+                    val owner=nativeOwner
+                    if(owner?.trafficRecorder!=null) owner.trafficRecorder!!.clear(CoreBridge.traffic())
+                    else TrafficHistory.get(context).clear()
+                }.isSuccess
+                Handler(Looper.getMainLooper()).post {done(ok)}
+            }
+        }
         @Synchronized private fun log(value: String) { events.addFirst(value); while (events.size > 30) events.removeLast() }
     }
     private val serial get() = engineSerial
@@ -35,6 +52,18 @@ class PrismVpnService : VpnService() {
     private var vpnNetwork: Network? = null
     @Volatile private var activeCoreTicket = -1
     private var latestStartId = 0
+    private var trafficRecorder: TrafficRecorder?=null
+    private val trafficTick=object : Runnable {
+        override fun run() {
+            if(destroyed) return
+            serial.execute {if(nativeOwner===this@PrismVpnService) checkpointTraffic()}
+            main.postDelayed(this,15000)
+        }
+    }
+    private fun checkpointTraffic() {
+        runCatching {trafficRecorder?.capture(CoreBridge.traffic())}
+            .onFailure {log("流量统计暂时无法保存，将在下次检查点重试")}
+    }
     private fun publish(value: String, message: String = "") {
         if(visibleService!==this) return
         stage = value; detail = message; log(if (message.isEmpty()) value else "$value：$message")
@@ -78,10 +107,13 @@ class PrismVpnService : VpnService() {
                 nativeOwner=this; activeCoreTicket=ticket
                 val result = JSONObject(CoreBridge.start(fd.fd, config, filesDir.absolutePath, this))
                 check(!result.has("error"))
+                trafficRecorder=TrafficRecorder(TrafficHistory.get(this))
                 waitForVpnRouting(ticket)
                 if (ticket != generation.get()) { cleanup(); return@execute }
                 main.post {
-                    if (ticket == generation.get() && !destroyed) { publish("已连接"); observeNetworks() }
+                    if (ticket == generation.get() && !destroyed) {
+                        publish("已连接"); observeNetworks(); main.removeCallbacks(trafficTick); main.post(trafficTick)
+                    }
                 }
             } catch (_: Throwable) {
                 cleanup()
@@ -146,7 +178,8 @@ class PrismVpnService : VpnService() {
     fun protectSocket(fd: Int): Boolean = protect(fd)
     private fun cleanup() {
         activeCoreTicket=-1
-        if(nativeOwner===this) {runCatching {CoreBridge.stop()}; nativeOwner=null}
+        if(nativeOwner===this) {checkpointTraffic(); runCatching {CoreBridge.stop()}; nativeOwner=null}
+        trafficRecorder=null
         vpnNetwork?.let {pendingVpn=it}; vpnNetwork=null
         runCatching { descriptor?.close() }; descriptor = null
         awaitDetached(false)
@@ -166,6 +199,7 @@ class PrismVpnService : VpnService() {
     private fun disconnect(reason: String = "") {
         if (destroyed) return
         val ticket = generation.incrementAndGet()
+        main.removeCallbacks(trafficTick)
         val stopId=latestStartId
         callback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }; callback = null
         publish("正在断开")
@@ -177,6 +211,7 @@ class PrismVpnService : VpnService() {
     override fun onRevoke() { main.post { disconnect("VPN 授权已撤销") } }
     override fun onDestroy() {
         destroyed = true; generation.incrementAndGet()
+        main.removeCallbacks(trafficTick)
         callback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }; callback = null
         serial.execute { cleanup() }
         if (stage != "连接失败") publish("已断开", detail)
