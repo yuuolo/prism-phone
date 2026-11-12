@@ -19,6 +19,8 @@ pub struct Session {
     pub node: ProxyConfig,
     #[serde(default)]
     pub direct: Vec<DirectRule>,
+    #[serde(default)]
+    pub routing: Option<crate::routing::Routing>,
 }
 
 fn supported(node: &ProxyConfig) -> bool {
@@ -93,6 +95,9 @@ pub fn build(s: Session) -> Result<(Profile, String)> {
         }
     }
     rules.push("MATCH,手机节点".into());
+    if let Some(routing) = s.routing {
+        rules = routing.compile()?;
+    }
     let p = Profile {
         proxies: vec![ProxyConfig {
             name: "手机节点".into(),
@@ -149,6 +154,7 @@ mod tests {
         let (p, raw) = build(Session {
             node: node(),
             direct: vec![],
+            routing: None,
         })
         .unwrap();
         assert!(p.general.block_ipv6);
@@ -166,7 +172,8 @@ mod tests {
             direct: vec![DirectRule {
                 kind: "domain".into(),
                 value: "a.test,REJECT\nrules:".into()
-            }]
+            }],
+            routing: None,
         })
         .is_err());
         assert!(build(Session {
@@ -174,7 +181,8 @@ mod tests {
             direct: vec![DirectRule {
                 kind: "ip".into(),
                 value: "192.168.1.0/24".into()
-            }]
+            }],
+            routing: None,
         })
         .is_ok());
     }

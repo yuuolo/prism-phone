@@ -256,8 +256,9 @@ class MainActivity : Activity() {
                 val speed=if(rates==null) "速率采样中…" else "↑ ${formatBytes(rates.upload)}/s    ↓ ${formatBytes(rates.download)}/s"
                 val seconds=stats.getLong("uptimeMs")/1000
                 counters?.text="本次累计 ↑ ${formatBytes(upload)}    ↓ ${formatBytes(download)}"
-                dashboard?.text="内核运行中 · %02d:%02d:%02d\n%s\n活跃连接 %d\n策略：规则分流 · %d 条直连规则\n默认出口：%s".format(
-                    seconds/3600,seconds/60%60,seconds%60,speed,stats.getInt("connections"),stats.getInt("directRules"),stats.getString("nodeName"))
+                val defaultTarget=when(stats.getString("defaultTarget")) {"DIRECT"->"直连";"REJECT"->"拒绝";else->stats.getString("nodeName")}
+                dashboard?.text="内核运行中 · %02d:%02d:%02d\n%s\n活跃连接 %d\n策略：规则分流 · %d 条启用规则\n默认出口：%s".format(
+                    seconds/3600,seconds/60%60,seconds%60,speed,stats.getInt("connections"),stats.getInt("activeRules"),defaultTarget)
             }
         }
     }
@@ -349,27 +350,9 @@ class MainActivity : Activity() {
             else button("授权局域网访问") {LocalNetworkAccess.request(this,121)}
         }
         card {
-        label("基础分流",20f)
-        label("默认全部经所选节点。以下域名后缀或 IPv4 CIDR 可明确设为直连；其他桌面规则不会自动迁移。",13f)
-        val rules=state.optJSONArray("direct") ?: JSONArray()
-        for(i in 0 until rules.length()) {
-            val rule=rules.getJSONObject(i)
-            button("${rule.getString("value")}  · 删除") { if(editable()) {rules.remove(i); state.put("direct",rules); store.save(state); render()} }
-        }
-        val kind=Spinner(this).apply {adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_dropdown_item,listOf("域名后缀","IPv4 CIDR"))}; root.addView(kind)
-        val value=field("例如 example.com 或 192.168.1.0/24")
-        button("添加直连规则") {
-            if(!editable()) return@button
-            val ruleKind=if(kind.selectedItemPosition==0) "domain" else "ip"
-            val ruleValue=value.text.toString().trim()
-            runTask {
-                if(state.getJSONArray("nodes").length()==0) throw UserMessage("请先添加节点")
-                val next=JSONArray(rules.toString()).put(JSONObject().put("kind",ruleKind).put("value",ruleValue))
-                val validation=JSONObject(CoreBridge.validateSession(JSONObject(store.session()).put("direct",next).toString()))
-                if(validation.has("error")) throw UserMessage("规则格式不正确或超出首版支持范围")
-                state.put("direct",next); store.save(state); "规则已保存"
-            }
-        }
+        label("路由规则",20f)
+        label("按规则组和组内顺序首次命中；可直连、拒绝或使用所选节点。原有直连规则按原顺序保留。修改须先断开 VPN。",13f)
+        button("管理路由规则") {startActivity(Intent(this,RoutingActivity::class.java))}
         }
         card {
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)

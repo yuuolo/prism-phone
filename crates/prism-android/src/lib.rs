@@ -5,3 +5,4 @@ pub mod diagnostics;
 mod engine;
 pub mod local_proxy;
 pub mod profile;
+pub mod routing;

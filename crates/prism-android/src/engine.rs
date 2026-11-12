@@ -34,6 +34,8 @@ struct Running {
     node_name: String,
     node_id: String,
     direct_rules: usize,
+    active_rules: usize,
+    default_target: String,
     local_proxy: Arc<tokio::sync::Mutex<Option<crate::local_proxy::LocalProxy>>>,
     can_lan: Arc<dyn Fn() -> bool + Send + Sync>,
     proxy_notify: Arc<dyn Fn(bool, bool, u16) + Send + Sync>,
@@ -41,6 +43,35 @@ struct Running {
 }
 static ENGINE: Mutex<Option<Running>> = Mutex::new(None);
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
+#[no_mangle]
+pub extern "system" fn Java_dev_prism_android_CoreBridge_routing(
+    mut env: JNIEnv,
+    _: JClass,
+    raw: JString,
+) -> jstring {
+    ffi(&mut env, |env| {
+        let Ok(raw) = input(env, &raw) else {
+            return json!({"error":"规则参数无效"});
+        };
+        let result = (|| -> anyhow::Result<Value> {
+            anyhow::ensure!(raw.len() <= 256 * 1024, "规则参数过长");
+            let request: Value = serde_json::from_str(&raw)?;
+            match request["action"].as_str() {
+                Some("validate") => {
+                    let routing: crate::routing::Routing =
+                        serde_json::from_value(request["routing"].clone())
+                            .map_err(|_| anyhow::anyhow!("规则配置格式无效"))?;
+                    Ok(json!({"ok":true,"activeRules":routing.compile()?.len()-1}))
+                }
+                Some("import") => Ok(
+                    json!({"rules":crate::routing::Routing::import(request["text"].as_str().unwrap_or_default())?}),
+                ),
+                _ => anyhow::bail!("不支持的规则操作"),
+            }
+        })();
+        result.unwrap_or_else(|e| json!({"error":e.to_string()}))
+    })
+}
 #[no_mangle]
 pub extern "system" fn Java_dev_prism_android_CoreBridge_proxyControl(
     mut env: JNIEnv,
@@ -343,9 +374,31 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
             .ok()
             .and_then(|v| v["node"]["_id"].as_str().map(str::to_owned))
             .unwrap_or_else(|| "legacy".into());
-        let direct_rules = session.direct.len();
+        let active_rules = session
+            .routing
+            .as_ref()
+            .and_then(|r| r.compile().ok())
+            .map(|r| r.len() - 1)
+            .unwrap_or(session.direct.len());
+        let direct_rules = session
+            .routing
+            .as_ref()
+            .map(|r| {
+                r.groups
+                    .iter()
+                    .filter(|g| g.enabled)
+                    .flat_map(|g| &g.rules)
+                    .filter(|r| r.enabled && r.target == "DIRECT")
+                    .count()
+            })
+            .unwrap_or(session.direct.len());
+        let default_target = session
+            .routing
+            .as_ref()
+            .map(|r| r.default_target.clone())
+            .unwrap_or_else(|| "SELECTED".into());
         let Ok((profile, reload)) = profile::build(session) else {
-            return json!({"error":"节点或直连规则不受支持"});
+            return json!({"error":"节点或路由规则不受支持"});
         };
         let mut slot = ENGINE.lock().unwrap_or_else(|p| p.into_inner());
         if slot.is_some() {
@@ -491,6 +544,8 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                     node_name,
                     node_id,
                     direct_rules,
+                    active_rules,
+                    default_target,
                     local_proxy: Arc::new(tokio::sync::Mutex::new(None)),
                     can_lan,
                     proxy_notify,
@@ -521,7 +576,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_validateSession(
             .and_then(|s| profile::build(s).ok())
         {
             Some(_) => json!({"ok":true}),
-            None => json!({"error":"节点或直连规则不受支持"}),
+            None => json!({"error":"节点或路由规则不受支持"}),
         }
     })
 }
@@ -572,7 +627,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_status(
                 let connections = s.conns.lock().unwrap_or_else(|p| p.into_inner()).len();
                 json!({"running":r.alive.load(Ordering::Acquire),"upload":s.upload.load(Ordering::Relaxed),"download":s.download.load(Ordering::Relaxed),"tunReceived":received,"tunSent":sent,
                     "sessionId":r.session_id.to_string(),"uptimeMs":r.started.elapsed().as_millis() as u64,
-                    "connections":connections,"nodeName":r.node_name,"directRules":r.direct_rules})
+                    "connections":connections,"nodeName":r.node_name,"directRules":r.direct_rules,"activeRules":r.active_rules,"defaultTarget":r.default_target})
             }
             None => json!({"running":false,"upload":0,"download":0}),
         }

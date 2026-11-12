@@ -48,7 +48,7 @@ jobs:
       - name: Shared mobile policy tests
         run: |
           cargo test -p prism-android --lib --locked
-          cargo test -p prism-core --test mobile_traffic --locked
+          cargo test -p prism-core --test mobile_traffic --test dns_privacy_routing --test fake_ip_rules --test network_recovery --locked
       - name: Build Android native libraries
         if: steps.native.outputs.cache-hit != 'true'
         run: |

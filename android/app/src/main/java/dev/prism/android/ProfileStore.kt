@@ -47,6 +47,16 @@ class ProfileStore(context: Context) {
             if(!node.has("_id")) node.put("_id",java.util.UUID.randomUUID().toString())
             if(!node.optBoolean("_local") && !node.has("_sourceId")) node.put("_sourceId","legacy")
         }
+        if(!state.has("routing")) {
+            val rules=JSONArray(); val old=state.optJSONArray("direct") ?: JSONArray()
+            for(i in 0 until old.length()) {
+                val r=old.getJSONObject(i)
+                rules.put(JSONObject().put("kind",if(r.getString("kind")=="domain") "DOMAIN-SUFFIX" else "IP-CIDR")
+                    .put("value",r.getString("value")).put("target","DIRECT").put("enabled",true).put("noResolve",false))
+            }
+            state.put("routing",JSONObject().put("version",1).put("defaultTarget","SELECTED").put("groups",JSONArray()
+                .put(JSONObject().put("name","原有直连规则").put("enabled",true).put("rules",rules))))
+        }
         return state
     }
     private fun requireIdle()=check(PrismVpnService.stage !in listOf("已连接","正在连接","正在断开")) {"请先断开再修改配置"}
@@ -62,7 +72,15 @@ class ProfileStore(context: Context) {
         val nodes = profile.getJSONArray("nodes")
         require(nodes.length() > 0)
         val selected = profile.optInt("selected", 0).coerceIn(0, nodes.length()-1)
-        return JSONObject().put("node", nodes.getJSONObject(selected)).put("direct", profile.optJSONArray("direct") ?: JSONArray()).toString()
+        return JSONObject().put("node", nodes.getJSONObject(selected)).put("routing",profile.getJSONObject("routing")).toString()
+    }
+    fun updateRouting(expected: String, next: JSONObject)=synchronized(lock) {
+        requireIdle()
+        val state=load()
+        check(state.getJSONObject("routing").toString()==expected) {"规则已被其他页面修改，请重新打开后编辑"}
+        val result=JSONObject(CoreBridge.routing(JSONObject().put("action","validate").put("routing",next).toString()))
+        require(!result.has("error")) {result.optString("error")}
+        state.put("routing",next); save(state)
     }
     fun import(raw: String, append: Boolean, sourceUrl: String? = null, sourceId: String? = null, sourceName: String? = null): String = synchronized(lock) {
         require(raw.length <= 4 * 1024 * 1024) { "导入内容超过 4 MiB" }
