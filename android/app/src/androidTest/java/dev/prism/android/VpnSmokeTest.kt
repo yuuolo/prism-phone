@@ -194,14 +194,15 @@ class VpnSmokeTest {
             socket.soTimeout=3000; socket.connect(InetSocketAddress("203.0.113.8",80),3000)
             socket.getOutputStream().write("GET /hold HTTP/1.1\r\nHost: hold.invalid\r\n\r\n".toByteArray())
             assertEquals('H'.code,socket.getInputStream().read())
-            val tcpQuery="{\"network\":\"tcp\",\"search\":\"203.0.113.8\"}"
+            // TUN sniffing restores the HTTP Host as the routed destination.
+            val tcpQuery="{\"network\":\"tcp\",\"search\":\"hold.invalid\"}"
             val tcp=JSONObject(CoreBridge.connections(tcpQuery)).getJSONArray("connections").getJSONObject(0)
             assertEquals("tcp",tcp.getString("network"))
             assertTrue(tcp.getLong("upload")>0)
             // Show the real connection in the foreground UI before closing it.
             context.startActivity(Intent(context,ConnectionsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             val device=UiDevice.getInstance(instrumentation)
-            assertTrue(device.wait(Until.hasObject(By.text("203.0.113.8:80")),5000))
+            assertTrue(device.wait(Until.hasObject(By.text("hold.invalid:80")),5000))
             val dir=File(context.getExternalFilesDir(null),"screenshots").apply {mkdirs()}
             assertTrue(device.takeScreenshot(File(dir,"connections.png")))
             assertTrue(close(tcp.getString("id")).getBoolean("closed"))
