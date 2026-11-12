@@ -26,9 +26,10 @@ class LiveDnsTest {
         Updates.setEnabled(context,false)
         context.getSharedPreferences("prism-mobile",0).edit().clear().commit()
         instrumentation.uiAutomation.executeShellCommand("appops set ${context.packageName} ACTIVATE_VPN allow").use {fd -> FileInputStream(fd.fileDescriptor).use {it.readBytes()}}
+        if(android.os.Build.VERSION.SDK_INT>=37) instrumentation.uiAutomation.executeShellCommand("pm grant ${context.packageName} ${LocalNetworkAccess.permission}").use {fd -> FileInputStream(fd.fileDescriptor).use {it.readBytes()}}
         val port=InstrumentationRegistry.getArguments().getString("dohSocksPort","19090").toInt()
         require(port in 1024..65535)
-        ProfileStore(context).import("proxies: [{name: DoH verification, type: socks5, server: 127.0.0.1, port: $port}]",false)
+        ProfileStore(context).import("proxies: [{name: DoH verification, type: socks5, server: 10.0.2.2, port: $port}]",false)
         context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         context.startForegroundService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT))
         try {

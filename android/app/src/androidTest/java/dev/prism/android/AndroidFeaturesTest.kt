@@ -19,6 +19,39 @@ class AndroidFeaturesTest {
     private val context get()=instrumentation.targetContext
     private fun profile(name: String,port: Int)="proxies: [{name: '$name', type: socks5, server: 127.0.0.1, port: $port}]"
     private fun reset() {context.getSharedPreferences("prism-mobile",0).edit().clear().commit(); Updates.setEnabled(context,false)}
+    @Test fun lanPermissionPolicyAndMissingPermissionFailure() {
+        for(host in listOf("1.1.1.1","127.0.0.1","::1","proxy.example.com")) {
+            assertFalse(host,LocalNetworkAccess.isLocalEndpoint(host))
+            assertFalse(host,LocalNetworkAccess.needsPermission(context,host))
+        }
+        for(host in listOf("10.0.2.2","172.16.0.1","192.168.1.1","169.254.1.1","fd00::1","fe80::1","router.local")) {
+            assertTrue(host,LocalNetworkAccess.isLocalEndpoint(host))
+        }
+        if(android.os.Build.VERSION.SDK_INT>=37 && !LocalNetworkAccess.granted(context)) {
+            context.getSharedPreferences("runtime-permissions",0).edit().clear().commit()
+            reset(); ProfileStore(context).import(profile("LAN permission fixture",19090).replace("127.0.0.1","10.0.2.2"),false)
+            instrumentation.uiAutomation.executeShellCommand("appops set ${context.packageName} ACTIVATE_VPN allow").use {fd -> java.io.FileInputStream(fd.fileDescriptor).use {it.readBytes()}}
+            context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+            val device=UiDevice.getInstance(instrumentation)
+            assertTrue(device.wait(Until.hasObject(By.clazz("android.widget.Button").text("连接")),5000))
+            device.findObject(By.clazz("android.widget.Button").text("连接")).click()
+            val deny=By.res(java.util.regex.Pattern.compile(".*:id/permission_deny_button"))
+            assertTrue("LAN connection must request system permission",device.wait(Until.hasObject(deny),5000))
+            assertFalse(JSONObject(CoreBridge.status()).getBoolean("running"))
+            val dir=File(context.getExternalFilesDir(null),"screenshots").apply {mkdirs()}
+            assertTrue(device.takeScreenshot(File(dir,"lan-permission.png")))
+            device.findObject(deny).click(); instrumentation.waitForIdleSync()
+            assertFalse(LocalNetworkAccess.granted(context))
+            assertFalse(JSONObject(CoreBridge.status()).getBoolean("running"))
+            context.startForegroundService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT))
+            val until=System.currentTimeMillis()+10000
+            while(PrismVpnService.stage!="连接失败" && System.currentTimeMillis()<until) Thread.sleep(100)
+            assertEquals("连接失败",PrismVpnService.stage)
+            assertTrue(PrismVpnService.detail.contains("局域网"))
+            assertFalse(JSONObject(CoreBridge.status()).getBoolean("running"))
+            context.stopService(Intent(context,PrismVpnService::class.java)); instrumentation.waitForIdleSync(); reset()
+        }
+    }
     @Test fun subscriptionsAreIsolatedAndSelectionsSurviveChanges() {
         reset(); val store=ProfileStore(context)
         store.import(profile("Singapore",10001),false,"https://example.com/a",sourceName="A")

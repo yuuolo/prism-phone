@@ -96,6 +96,7 @@ class PrismVpnService : VpnService() {
                 awaitDetached(true)
                 check(prepare(this) == null) { "请重新授权 VPN" }
                 val config = ProfileStore(this).session()
+                if(LocalNetworkAccess.needsPermission(this,JSONObject(config).getJSONObject("node").getString("server"))) throw LocalNetworkPermissionRequired()
                 val validation = JSONObject(CoreBridge.validateSession(config))
                 check(!validation.has("error"))
                 val fd = Builder().setSession("Prism Android").setMtu(1500).setBlocking(false)
@@ -115,9 +116,12 @@ class PrismVpnService : VpnService() {
                         publish("已连接"); observeNetworks(); main.removeCallbacks(trafficTick); main.post(trafficTick)
                     }
                 }
-            } catch (_: Throwable) {
+            } catch (error: Throwable) {
                 cleanup()
-                main.post { if (ticket == generation.get() && !destroyed) { publish("连接失败", "请检查 VPN 授权、节点参数和系统限制"); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() } }
+                main.post { if (ticket == generation.get() && !destroyed) {
+                    publish("连接失败",if(error is LocalNetworkPermissionRequired) "局域网节点需要局域网访问权限，请在设置授权" else "请检查 VPN 授权、节点参数和系统限制")
+                    stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+                } }
             }
         }
         return START_NOT_STICKY

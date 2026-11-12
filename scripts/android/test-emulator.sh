@@ -9,7 +9,6 @@ test=$(find "$1" -name '*androidTest.apk' | head -1)
 test -n "$app" && test -n "$test"
 adb install -r "$app"
 adb install -r "$test"
-adb reverse tcp:19090 tcp:19090
 adb shell am instrument -w dev.prism.android.test/androidx.test.runner.AndroidJUnitRunner | tee emulator-results/instrumentation.txt
 adb logcat -d > emulator-results/logcat.txt
 adb exec-out screencap -p > emulator-results/screen.png

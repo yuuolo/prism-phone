@@ -163,10 +163,7 @@ class MainActivity : Activity() {
         }
         connect=button("连接") {
             if(!idle()) {startService(Intent(this,PrismVpnService::class.java).setAction(PrismVpnService.DISCONNECT))}
-            else if(nodeCount>0) {
-                val permission=VpnService.prepare(this)
-                if(permission!=null) startActivityForResult(permission,100) else startVpn()
-            }
+            else if(nodeCount>0) requestVpnConnection()
         }.apply {setTextColor(Color.WHITE); background=PrismStyle.shape(PrismStyle.purple,dp(16).toFloat()); minHeight=dp(62); textSize=17f}
         counters=label("↑ 0 B    ↓ 0 B")
         }
@@ -192,7 +189,27 @@ class MainActivity : Activity() {
         card {label("DNS 隐私保护",18f); label("DNS 经所选节点加密查询。IPv6 流量已接管，当前版本阻断 IPv6 目标。",13f)}
         updateStatus()
     }
+    private fun requestVpnConnection() {
+        if(!idle() || busy) return
+        val server=runCatching {
+            val state=store.load(); val nodes=state.getJSONArray("nodes")
+            nodes.getJSONObject(state.optInt("selected").coerceIn(0,nodes.length()-1)).getString("server")
+        }.getOrElse {message("无法读取所选节点，请检查本机配置"); return}
+        if(LocalNetworkAccess.needsPermission(this,server)) {
+            LocalNetworkAccess.request(this,120); return
+        }
+        val permission=VpnService.prepare(this)
+        if(permission!=null) startActivityForResult(permission,100) else startVpn()
+    }
     private fun startVpn() { startForegroundService(Intent(this,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT)) }
+    @Deprecated("Platform callback")
+    override fun onRequestPermissionsResult(requestCode: Int,permissions: Array<out String>,grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode,permissions,grantResults)
+        if(requestCode==120) {
+            if(LocalNetworkAccess.granted(this)) requestVpnConnection() else message("局域网访问未授权，可在设置授权或选择公网节点")
+        }
+        if(requestCode==121) render()
+    }
     @Deprecated("Platform callback")
     override fun onActivityResult(request: Int, result: Int, data: Intent?) { super.onActivityResult(request,result,data); if(request==100 && result==RESULT_OK) startVpn() }
     private fun updateStatus() {
@@ -324,6 +341,12 @@ class MainActivity : Activity() {
     }
     private fun settingsPage() {
         val state=try {store.load()} catch (_: Exception) {label("无法读取加密配置，请检查本机存储后重试"); return}
+        if(Build.VERSION.SDK_INT>=37) card {
+            label("局域网访问",19f)
+            label("Android 17 的局域网权限用于连接本地网络中的节点或直连目标。公网节点与本机回环服务不要求此权限；授权不会开启代理共享。",13f)
+            if(LocalNetworkAccess.granted(this)) label("局域网访问已授权",14f)
+            else button("授权局域网访问") {LocalNetworkAccess.request(this,121)}
+        }
         card {
         label("基础分流",20f)
         label("默认全部经所选节点。以下域名后缀或 IPv4 CIDR 可明确设为直连；其他桌面规则不会自动迁移。",13f)
@@ -441,6 +464,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         resumed=true
+        if(tab==2) render()
         main.post(tick)
         if(Updates.enabled(this) && Updates.due(this)) checkUpdates(true)
         Updates.cached(this)?.let {Updates.notify(this,it)}

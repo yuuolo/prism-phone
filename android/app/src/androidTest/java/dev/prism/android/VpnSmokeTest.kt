@@ -254,6 +254,8 @@ class VpnSmokeTest {
             // Show the real connection in the foreground UI before closing it.
             context.startActivity(Intent(context,ConnectionsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             val device=UiDevice.getInstance(instrumentation)
+            assertTrue(device.wait(Until.hasObject(By.desc("搜索连接")),5000))
+            device.findObject(By.desc("搜索连接")).text="hold.invalid"
             val dir=File(context.getExternalFilesDir(null),"screenshots").apply {mkdirs()}
             val visible=device.wait(Until.hasObject(By.text("hold.invalid:80")),6000)
             assertTrue(device.takeScreenshot(File(dir,"connections.png")))

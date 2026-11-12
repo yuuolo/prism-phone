@@ -1,7 +1,7 @@
 """Loopback-only test SOCKS relay: permit only the app's fixed public DoH IP.
 
 No TLS termination, test CA, proxy credentials, or DNS response substitution.
-An adb reverse mapping reaches this host loopback listener from the test guest.
+The emulator's 10.0.2.2 host alias reaches this listener after LAN permission.
 """
 import argparse
 import concurrent.futures
