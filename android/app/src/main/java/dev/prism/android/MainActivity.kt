@@ -146,21 +146,30 @@ class MainActivity : Activity() {
         status=label(PrismVpnService.stage,28f)
         label("加密 DNS · 全设备接管",13f).setTextColor(Color.rgb(215,204,237))
         val state=try {store.load()} catch (_: Exception) {label("无法读取加密配置，请检查本机存储后重新导入"); JSONObject().put("nodes",JSONArray())}
-        val choices=state.getJSONArray("nodes"); nodeCount=choices.length()
+        val pool=MergedNodes.pool(state);val choices=pool.nodes;nodeCount=choices.size
+        val selectedId=state.getJSONArray("nodes").optJSONObject(state.optInt("selected"))?.optString("_id")
+        val selected=pool.aliases[selectedId]?.optString("_id")
+        val selectedIndex=choices.indexOfFirst {it.optString("_id")==selected}
+        val offset=if(selectedIndex<0 && nodeCount>0) 1 else 0
+        var currentChoice=if(selectedIndex<0) 0 else selectedIndex+offset
         val spinner=Spinner(this)
         spinner.contentDescription="选择节点"; spinner.setPadding(dp(12),0,dp(12),0)
         spinner.backgroundTintList=android.content.res.ColorStateList.valueOf(Color.WHITE)
         root.addView(spinner,LinearLayout.LayoutParams(-1,dp(52)).apply {topMargin=dp(10);bottomMargin=dp(10)}); nodes=spinner
-        spinner.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,if(nodeCount==0) listOf("请先添加节点") else (0 until nodeCount).map {choices.getJSONObject(it).optString("name","节点 ${it+1}")}).also {it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)}
+        val names=if(nodeCount==0) listOf("请先添加节点") else (if(offset==1) listOf("请选择池内节点") else emptyList())+choices.map {MergedNodes.display(it)}
+        spinner.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,names).also {it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)}
         // Keep the selected node readable against the dark connection card.
         spinner.background=PrismStyle.shape(Color.WHITE,dp(12).toFloat())
-        if(nodeCount>0) spinner.setSelection(state.optInt("selected").coerceIn(0,nodeCount-1))
+        if(nodeCount>0) spinner.setSelection(currentChoice)
         spinner.onItemSelectedListener=object : AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: AdapterView<*>?) {}
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if(idle() && nodeCount>0 && state.optInt("selected")!=position) {state.put("selected",position); runCatching {store.save(state)}}
+                if(idle() && nodeCount>0 && position!=currentChoice && position-offset in choices.indices) {
+                    runCatching {store.select(choices[position-offset].getString("_id"))}.onSuccess {currentChoice=position}.onFailure {message("节点选择未保存，请刷新后重试")}
+                }
             }
         }
+        if(state.optJSONObject("automatic")?.optBoolean("enabled")==true) label("已启用自动优选，连接使用候选池；此处保留手动选择。",12f)
         connect=button("连接") {
             if(!idle()) {startService(Intent(this,PrismVpnService::class.java).setAction(PrismVpnService.DISCONNECT))}
             else if(nodeCount>0) requestVpnConnection()
@@ -194,7 +203,7 @@ class MainActivity : Activity() {
         if(!idle() || busy) return
         val local=runCatching {
             ProfileStore.sessionServers(JSONObject(store.session())).any {LocalNetworkAccess.needsPermission(this,it)}
-        }.getOrElse {message("所选节点或优选候选不可用，请检查节点与优选设置"); return}
+        }.getOrElse {message("节点选择或候选池不可用，请检查节点、优选与合并设置"); return}
         if(local) {
             LocalNetworkAccess.request(this,120); return
         }
@@ -296,6 +305,9 @@ class MainActivity : Activity() {
             }
         }
         label("节点列表",20f)
+        button("订阅合并设置") {startActivity(Intent(this,MergeActivity::class.java))}
+        val selectionPool=MergedNodes.pool(state)
+        if(state.optJSONObject("merge")?.optBoolean("enabled")==true) label("合并池 ${selectionPool.nodes.size} 个节点 · 去重 ${selectionPool.originalCount-selectionPool.nodes.size} 个。各来源原始节点仍保留。",12f)
         val query=field("搜索节点名称或协议")
         query.setText(nodeQuery)
         val controls=LinearLayout(this)
@@ -312,8 +324,8 @@ class MainActivity : Activity() {
         fun draw() {
             val keyword=query.text.toString().trim()
             nodeQuery=keyword; nodeKind=kinds.getOrElse(kind.selectedItemPosition) {""}; nodeSort=sort.selectedItemPosition.coerceAtLeast(0); nodeFavorites=onlyFavorites.isChecked
-            var nodes=(0 until all.length()).map {all.getJSONObject(it)}.filter {
-                (keyword.isEmpty() || it.optString("name").contains(keyword,true) || it.optString("kind").contains(keyword,true)) &&
+            var nodes=selectionPool.nodes.filter {
+                (keyword.isEmpty() || MergedNodes.display(it).contains(keyword,true) || it.optString("kind").contains(keyword,true)) &&
                     (kind.selectedItemPosition<=0 || it.optString("kind")==kinds[kind.selectedItemPosition]) && (!onlyFavorites.isChecked || it.optBoolean("_favorite"))
             }
             nodes=when(sort.selectedItemPosition) {1 -> nodes.sortedBy {it.optString("name").lowercase()}; 2 -> nodes.sortedBy {it.optString("kind")}; 3 -> nodes.sortedByDescending {it.optBoolean("_favorite")}; else -> nodes}
@@ -322,9 +334,10 @@ class MainActivity : Activity() {
             for(node in nodes.take(limit)) {
                 val id=node.getString("_id")
                 card {
-                    label((if(node.optBoolean("_favorite")) "★  " else "")+node.optString("name"),17f)
-                    label(node.optString("kind").uppercase()+(if(id==selected) "  ·  当前节点" else ""),12f)
-                    actions((if(id==selected) "已选择" else "使用") to {if(editable()) runTask {store.select(id); "节点已选择"}},
+                    val current=selectionPool.aliases[selected]?.getString("_id")==id
+                    label((if(node.optBoolean("_favorite")) "★  " else "")+MergedNodes.display(node),17f)
+                    label(node.optString("kind").uppercase()+(if(current) "  ·  当前节点" else ""),12f)
+                    actions((if(current) "已选择" else "使用") to {if(editable()) runTask {store.select(id); "节点已选择"}},
                         (if(node.optBoolean("_favorite")) "取消收藏" else "收藏") to {if(!busy) runTask {store.favorite(id); "收藏已更新"}},
                         "删除" to {if(editable()) AlertDialog.Builder(this).setTitle("删除这个节点？").setMessage(node.optString("name"))
                             .setNegativeButton("取消",null).setPositiveButton("删除") {_,_ -> if(editable()) runTask {store.removeNode(id); "节点已删除"}}.show()})
@@ -448,7 +461,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         resumed=true
-        if(tab==2) render()
+        if(tab in 0..2) render()
         main.post(tick)
         if(Updates.enabled(this) && Updates.due(this)) checkUpdates(true)
         Updates.cached(this)?.let {Updates.notify(this,it)}

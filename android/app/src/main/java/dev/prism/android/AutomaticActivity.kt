@@ -33,9 +33,9 @@ class AutomaticActivity:Activity() {
     private fun field(label:String,value:String)=EditText(this).apply {hint=label;contentDescription=label;isSingleLine=true;inputType=android.text.InputType.TYPE_CLASS_NUMBER;setText(value)}
     override fun onCreate(saved:Bundle?) {
         super.onCreate(saved);store=ProfileStore(this)
-        val state=try {store.load()} catch(_:Exception) {finish();return};nodes=state.getJSONArray("nodes")
+        val state=try {store.load()} catch(_:Exception) {finish();return};val pool=MergedNodes.pool(state);nodes=JSONArray(pool.nodes)
         val config=state.optJSONObject("automatic") ?: JSONObject();expected=config.toString()
-        val ids=config.optJSONArray("candidateIds") ?: JSONArray();for(i in 0 until ids.length()) chosen.add(ids.getString(i))
+        val ids=config.optJSONArray("candidateIds") ?: JSONArray();for(i in 0 until ids.length()) {val id=ids.getString(i);chosen.add(pool.aliases[id]?.getString("_id") ?: id)}
         root=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL;isFocusableInTouchMode=true;setBackgroundColor(PrismStyle.background)
             setOnApplyWindowInsetsListener {v,insets ->
@@ -67,10 +67,10 @@ class AutomaticActivity:Activity() {
         val available=(0 until nodes.length()).map {nodes.getJSONObject(it)}
         val missing=chosen.filter {id->available.none {it.optString("_id")==id}}
         if(missing.isNotEmpty()) list.addView(button("移除 ${missing.size} 个已失效候选") {chosen.removeAll(missing.toSet());drawNodes()})
-        val filtered=available.filter {it.getString("name").contains(query,true)}
+        val filtered=available.filter {MergedNodes.display(it).contains(query,true)}
         for(n in filtered.take(limit)) {
             val id=n.getString("_id")
-            list.addView(CheckBox(this).apply {text=n.getString("name");isChecked=id in chosen;contentDescription="候选 ${n.getString("name")}"
+            list.addView(CheckBox(this).apply {text=MergedNodes.display(n);isChecked=id in chosen;contentDescription="候选 ${MergedNodes.display(n)}"
                 setOnCheckedChangeListener {button,checked ->
                     if(checked && chosen.size>=16) {button.isChecked=false;Toast.makeText(this@AutomaticActivity,"最多 16 个候选",Toast.LENGTH_SHORT).show()}
                     else {if(checked) chosen.add(id) else chosen.remove(id)}

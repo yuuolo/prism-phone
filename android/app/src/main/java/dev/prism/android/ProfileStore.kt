@@ -79,16 +79,24 @@ class ProfileStore(context: Context) {
         val nodes = profile.getJSONArray("nodes")
         require(nodes.length() > 0)
         val selected = profile.optInt("selected", 0).coerceIn(0, nodes.length()-1)
-        val session=JSONObject().put("node", nodes.getJSONObject(selected)).put("routing",profile.getJSONObject("routing"))
+        val pool=MergedNodes.pool(profile)
+        require(pool.missingSources.isEmpty()) {"合并来源已移除，请重新配置订阅合并"}
+        val selectedNode=nodes.getJSONObject(selected);val merged=pool.aliases[selectedNode.getString("_id")]
+        require(merged!=null) {"所选节点不在合并池中，请重新选择节点"}
+        val sessionNode=JSONObject(selectedNode.toString()).put("name",MergedNodes.display(merged))
+        val session=JSONObject().put("node",sessionNode).put("routing",profile.getJSONObject("routing"))
         val automatic=profile.optJSONObject("automatic")
         if(automatic?.optBoolean("enabled")==true) {
             val ids=automatic.getJSONArray("candidateIds");require(ids.length() in 2..16) {"自动优选须有 2–16 个候选节点"}
             val candidates=JSONArray()
+            val represented=mutableSetOf<String>()
             for(i in 0 until ids.length()) {
                 val id=ids.getString(i)
                 val node=(0 until nodes.length()).map {nodes.getJSONObject(it)}.firstOrNull {it.optString("_id")==id}
                 require(node!=null) {"自动优选候选已移除，请重新配置候选节点"}
-                candidates.put(JSONObject().put("id",id).put("node",node))
+                val entry=pool.aliases[id];require(entry!=null) {"自动优选候选不在合并池中，请重新配置"}
+                require(represented.add(entry.getString("_id"))) {"自动优选候选经合并后重复，请重新配置"}
+                candidates.put(JSONObject().put("id",id).put("node",JSONObject(node.toString()).put("name",MergedNodes.display(entry))))
             }
             session.put("automatic",JSONObject().put("candidates",candidates).put("intervalSeconds",automatic.getLong("intervalSeconds")).put("toleranceMs",automatic.getLong("toleranceMs")))
         }
@@ -102,6 +110,20 @@ class ProfileStore(context: Context) {
         state.put("automatic",next)
         val result=JSONObject(CoreBridge.validateSession(buildSession(state).toString()))
         require(!result.has("error")) {"自动优选候选、规则或节点配置无效"};save(state)
+    }
+    fun updateMerge(expected:String,next:JSONObject)=synchronized(lock) {
+        requireIdle();val state=load()
+        check((state.optJSONObject("merge")?.toString() ?: "{}")==expected) {"订阅合并配置已变化，请重新打开后修改"}
+        state.put("merge",next);val pool=MergedNodes.pool(state)
+        require(pool.missingSources.isEmpty()) {"合并来源已移除，请重新选择来源"}
+        require(pool.nodes.isNotEmpty()) {"合并池为空，请选择有节点的来源"}
+        val nodes=state.getJSONArray("nodes");val current=nodes.optJSONObject(state.optInt("selected"))?.optString("_id")
+        if(current !in pool.aliases) {
+            val first=pool.nodes.first().getString("_id")
+            for(i in 0 until nodes.length()) if(nodes.getJSONObject(i).getString("_id")==first) state.put("selected",i)
+        }
+        val result=JSONObject(CoreBridge.validateSession(buildSession(state).toString()))
+        require(!result.has("error")) {"合并池、优选或规则配置无效，请先调整候选"};save(state)
     }
     fun updateRouting(expected: String, next: JSONObject)=synchronized(lock) {
         requireIdle()
@@ -171,11 +193,15 @@ class ProfileStore(context: Context) {
     }
     fun favorite(id: String)=synchronized(lock) {
         val state=load(); val nodes=state.getJSONArray("nodes")
-        for(i in 0 until nodes.length()) nodes.getJSONObject(i).let {if(it.optString("_id")==id) it.put("_favorite",!it.optBoolean("_favorite"))}
+        val entry=MergedNodes.pool(state).aliases[id] ?: return@synchronized
+        val aliases=entry.optJSONArray("_mergeAliases")?.let {a->(0 until a.length()).map {a.getString(it)}.toSet()} ?: setOf(id)
+        val favorite=!entry.optBoolean("_favorite")
+        for(i in 0 until nodes.length()) nodes.getJSONObject(i).let {if(it.optString("_id") in aliases) it.put("_favorite",favorite)}
         save(state)
     }
     fun select(id: String)=synchronized(lock) {
         requireIdle(); val state=load(); val nodes=state.getJSONArray("nodes")
+        require(id in MergedNodes.pool(state).aliases) {"节点不在当前选择池中"}
         for(i in 0 until nodes.length()) if(nodes.getJSONObject(i).optString("_id")==id) state.put("selected",i)
         save(state)
     }
