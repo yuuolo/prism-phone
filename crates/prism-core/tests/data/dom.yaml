@@ -1,0 +1,8 @@
+payload:
+  - "google.com"
+  - "+.youtube.com"
+  - ".googlevideo.com"
+  - "*.ggpht.com"
+  - "a.*.example.org"
+  - "www.Example.NET"
+  - "+.co"

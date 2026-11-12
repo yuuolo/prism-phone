@@ -1,0 +1,16 @@
+target/
+artifacts/
+emulator-results/
+node_modules/
+dist/
+src-tauri/gen/
+src-tauri/binaries/
+*.log
+android/.gradle/
+android/local.properties
+android/.signing/
+android/**/build/
+android/app/src/main/jniLibs/
+android/app/src/androidTest/assets/*.apk
+*.keystore
+*.jks
