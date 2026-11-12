@@ -4,9 +4,9 @@
 
 `crates/prism-core` 同步自上述提交，是手机端独立构建使用的源码快照。后续同步桌面修复时，需在提交说明记录来源提交并通过手机策略、VPN 和 DNS 测试；手机改动不自动同步到桌面。
 
-## 更新入口
-
 手机端后续局部扩展：`crates/prism-core/src/tunnel.rs` 增加按实际出口与规则类别的累计载荷计数，供跨会话历史统计使用，累计量跨连接结束和 Hub 重载保留。该扩展仅存在于手机仓库，未同步修改桌面仓库；`mobile_traffic` 真实 TCP/UDP 与手机 VPN/DNS 验收用于检查兼容性。
+
+## 更新入口
 
 - 新构建检查 `https://github.com/yuuolo/prism-phone/releases/download/android-updates/android-update.json`。
 - 已安装的 Android 0.2.0-beta.1 只接受 `yuuolo/prism` 的 APK 下载路径。因此旧仓库的 `android-updates/android-update.json` 必须继续维护，不能直接改成指向新仓库的 APK。
