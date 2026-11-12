@@ -37,6 +37,7 @@ struct Running {
     active_rules: usize,
     default_target: String,
     automatic: Option<crate::automatic::Plan>,
+    geo_valid: Arc<AtomicBool>,
     local_proxy: Arc<tokio::sync::Mutex<Option<crate::local_proxy::LocalProxy>>>,
     can_lan: Arc<dyn Fn() -> bool + Send + Sync>,
     proxy_notify: Arc<dyn Fn(bool, bool, u16) + Send + Sync>,
@@ -63,6 +64,40 @@ fn current_node_name(r: &Running) -> String {
 }
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 #[no_mangle]
+pub extern "system" fn Java_dev_prism_android_CoreBridge_geodata(
+    mut env: JNIEnv,
+    _: JClass,
+    raw: JString,
+) -> jstring {
+    ffi(&mut env, |env| {
+        let Ok(raw) = input(env, &raw) else {
+            return json!({"error":"地区数据参数无效"});
+        };
+        let result = (|| -> anyhow::Result<Value> {
+            anyhow::ensure!(raw.len() <= 32768, "地区数据参数过长");
+            let request: Value = serde_json::from_str(&raw)?;
+            let snapshot: crate::geodata::Snapshot =
+                serde_json::from_value(request["snapshot"].clone())
+                    .map_err(|_| anyhow::anyhow!("地区数据快照格式无效"))?;
+            let home = PathBuf::from(
+                request["home"]
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("无法读取地区数据目录"))?,
+            );
+            let info = snapshot.inspect(&home)?;
+            if !request["routing"].is_null() {
+                let routing: crate::routing::Routing =
+                    serde_json::from_value(request["routing"].clone())
+                        .map_err(|_| anyhow::anyhow!("地区规则格式无效"))?;
+                routing.compile()?;
+                snapshot.validate_rules(&home, &routing)?;
+            }
+            Ok(info)
+        })();
+        result.unwrap_or_else(|e| json!({"error":e.to_string()}))
+    })
+}
+#[no_mangle]
 pub extern "system" fn Java_dev_prism_android_CoreBridge_routing(
     mut env: JNIEnv,
     _: JClass,
@@ -80,7 +115,13 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_routing(
                     let routing: crate::routing::Routing =
                         serde_json::from_value(request["routing"].clone())
                             .map_err(|_| anyhow::anyhow!("规则配置格式无效"))?;
-                    Ok(json!({"ok":true,"activeRules":routing.compile()?.len()-1}))
+                    let count = routing.compile()?.len() - 1;
+                    let snapshot: Option<crate::geodata::Snapshot> =
+                        serde_json::from_value(request["geodata"].clone())
+                            .map_err(|_| anyhow::anyhow!("地区数据快照格式无效"))?;
+                    let home = PathBuf::from(request["home"].as_str().unwrap_or_default());
+                    crate::geodata::validate(&home, snapshot.as_ref(), Some(&routing))?;
+                    Ok(json!({"ok":true,"activeRules":count}))
                 }
                 Some("import") => Ok(
                     json!({"rules":crate::routing::Routing::import(request["text"].as_str().unwrap_or_default())?}),
@@ -425,8 +466,25 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
             .as_ref()
             .map(|r| r.default_target.clone())
             .unwrap_or_else(|| "SELECTED".into());
+        let geo_snapshot = session.geodata.clone();
+        let geo_routing = session.routing.clone();
         let Ok((profile, reload)) = profile::build(session) else {
             return json!({"error":"节点或路由规则不受支持"});
+        };
+        let geo_base = PathBuf::from(&home);
+        let geo_used = geo_routing.as_ref().is_some_and(|r| {
+            let (a, b) = r.geo_codes();
+            !a.is_empty() || !b.is_empty()
+        });
+        let home = match crate::geodata::validate(
+            &geo_base,
+            geo_snapshot.as_ref(),
+            geo_routing.as_ref(),
+        ) {
+            Ok(path) => path.to_string_lossy().into_owned(),
+            Err(_) => {
+                return json!({"error":"地区数据缺失、损坏或分类不可用，请检查地区数据与规则"})
+            }
         };
         let reload = if automatic.is_some() {
             match crate::automatic::Plan::reload_payload(&reload) {
@@ -517,6 +575,8 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
         let stop = cancel.clone();
         let alive = Arc::new(AtomicBool::new(false));
         let living = alive.clone();
+        let geo_valid = Arc::new(AtomicBool::new(true));
+        let geo_validation = geo_valid.clone();
         let (ready_tx, ready_rx) = mpsc::channel();
         let (changes, mut changes_rx) = channel::unbounded_channel();
         let join = std::thread::spawn(move || {
@@ -542,6 +602,11 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                                 if event.is_none() {break}
                                 if last_change.elapsed() < Duration::from_secs(3) {continue}
                                 last_change = Instant::now();
+                                if geo_used {
+                                    let valid=geo_snapshot.as_ref().is_some_and(|s|s.verify(&geo_base).is_ok());
+                                    geo_validation.store(valid,Ordering::Release);
+                                    if !valid {continue;}
+                                }
                                 // Rebuild sockets and DNS; preserve the VPN fd and fake-IP mappings.
                                 let rebuilt = tokio::select! {
                                     _ = stop.cancelled() => break,
@@ -583,6 +648,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                     active_rules,
                     default_target,
                     automatic,
+                    geo_valid,
                     local_proxy: Arc::new(tokio::sync::Mutex::new(None)),
                     can_lan,
                     proxy_notify,
@@ -665,7 +731,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_status(
                 json!({"running":r.alive.load(Ordering::Acquire),"upload":s.upload.load(Ordering::Relaxed),"download":s.download.load(Ordering::Relaxed),"tunReceived":received,"tunSent":sent,
                     "sessionId":r.session_id.to_string(),"uptimeMs":r.started.elapsed().as_millis() as u64,
                     "connections":connections,"nodeName":current_node_name(r),"directRules":r.direct_rules,"activeRules":r.active_rules,"defaultTarget":r.default_target,
-                    "automatic":r.automatic.as_ref().map(|p|p.snapshot(&r.hub)).unwrap_or_else(||json!({"enabled":false}))})
+                    "automatic":r.automatic.as_ref().map(|p|p.snapshot(&r.hub)).unwrap_or_else(||json!({"enabled":false})),"geodataValid":r.geo_valid.load(Ordering::Acquire)})
             }
             None => json!({"running":false,"upload":0,"download":0}),
         }

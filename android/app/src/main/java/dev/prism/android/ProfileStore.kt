@@ -14,6 +14,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 /** Credentials and subscription URLs never enter plaintext preferences or backups. */
 class ProfileStore(context: Context) {
+    private val home=context.applicationContext.filesDir.absolutePath
     private val prefs = context.applicationContext.getSharedPreferences("prism-mobile", Context.MODE_PRIVATE)
     companion object {
         private val lock = Any(); private const val ALIAS = "prism-mobile-profile-v1"
@@ -85,6 +86,7 @@ class ProfileStore(context: Context) {
         require(merged!=null) {"所选节点不在合并池中，请重新选择节点"}
         val sessionNode=JSONObject(selectedNode.toString()).put("name",MergedNodes.display(merged))
         val session=JSONObject().put("node",sessionNode).put("routing",profile.getJSONObject("routing"))
+        profile.optJSONObject("geodata")?.let {session.put("geodata",it)}
         val automatic=profile.optJSONObject("automatic")
         if(automatic?.optBoolean("enabled")==true) {
             val ids=automatic.getJSONArray("candidateIds");require(ids.length() in 2..16) {"自动优选须有 2–16 个候选节点"}
@@ -129,9 +131,18 @@ class ProfileStore(context: Context) {
         requireIdle()
         val state=load()
         check(state.getJSONObject("routing").toString()==expected) {"规则已被其他页面修改，请重新打开后编辑"}
-        val result=JSONObject(CoreBridge.routing(JSONObject().put("action","validate").put("routing",next).toString()))
+        val result=JSONObject(CoreBridge.routing(JSONObject().put("action","validate").put("routing",next).put("home",home).put("geodata",state.optJSONObject("geodata")).toString()))
         require(!result.has("error")) {result.optString("error")}
         state.put("routing",next); save(state)
+    }
+    fun updateGeodata(expected:String,next:JSONObject)=synchronized(lock) {
+        requireIdle();val state=load()
+        check((state.optJSONObject("geodata")?.toString() ?: "{}")==expected) {"地区数据已变化，请重新打开后更新"}
+        val inspect=JSONObject(CoreBridge.geodata(JSONObject().put("home",home).put("snapshot",next).toString()))
+        require(!inspect.has("error")) {inspect.optString("error")}
+        val validated=JSONObject(CoreBridge.routing(JSONObject().put("action","validate").put("routing",state.getJSONObject("routing")).put("home",home).put("geodata",next).toString()))
+        require(!validated.has("error")) {validated.optString("error")}
+        state.put("geodata",next);save(state)
     }
     fun import(raw: String, append: Boolean, sourceUrl: String? = null, sourceId: String? = null, sourceName: String? = null): String = synchronized(lock) {
         require(raw.length <= 4 * 1024 * 1024) { "导入内容超过 4 MiB" }

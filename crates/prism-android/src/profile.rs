@@ -23,6 +23,8 @@ pub struct Session {
     pub routing: Option<crate::routing::Routing>,
     #[serde(default)]
     pub automatic: Option<crate::automatic::Plan>,
+    #[serde(default)]
+    pub geodata: Option<crate::geodata::Snapshot>,
 }
 
 pub(crate) fn supported(node: &ProxyConfig) -> bool {
@@ -161,6 +163,7 @@ mod tests {
             direct: vec![],
             routing: None,
             automatic: None,
+            geodata: None,
         })
         .unwrap();
         assert!(p.general.block_ipv6);
@@ -181,6 +184,7 @@ mod tests {
             }],
             routing: None,
             automatic: None,
+            geodata: None,
         })
         .is_err());
         assert!(build(Session {
@@ -191,6 +195,7 @@ mod tests {
             }],
             routing: None,
             automatic: None,
+            geodata: None,
         })
         .is_ok());
     }

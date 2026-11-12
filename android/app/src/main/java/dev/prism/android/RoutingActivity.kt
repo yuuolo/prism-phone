@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.*
 import android.widget.*
 import org.json.*
+import java.util.concurrent.Executors
 
 /** Edits a bounded local rules document. Saves are validated and compare the loaded revision. */
 class RoutingActivity : Activity() {
@@ -14,7 +15,9 @@ class RoutingActivity : Activity() {
     private var expected=""
     private var group=0
     private var page=0
-    private val kinds=listOf("DOMAIN","DOMAIN-SUFFIX","DOMAIN-KEYWORD","IP-CIDR","SRC-IP-CIDR","DST-PORT","SRC-PORT","NETWORK")
+    private val kinds=listOf("DOMAIN","DOMAIN-SUFFIX","DOMAIN-KEYWORD","IP-CIDR","SRC-IP-CIDR","DST-PORT","SRC-PORT","NETWORK","GEOSITE","GEOIP")
+    private val io=Executors.newSingleThreadExecutor()
+    private var busy=false
     private val targets=listOf("SELECTED","DIRECT","REJECT")
     private fun dp(n:Int)=(n*resources.displayMetrics.density).toInt()
     private fun text(value:String,size:Float=14f) {root.addView(TextView(this).apply {text=value;textSize=size;setTextColor(PrismStyle.ink);setPadding(0,dp(8),0,dp(8))})}
@@ -27,9 +30,20 @@ class RoutingActivity : Activity() {
         try {routing=store.load().getJSONObject("routing");expected=routing.toString();draw()}
         catch(_:Exception) {Toast.makeText(this,"无法读取规则配置",Toast.LENGTH_LONG).show();finish()}
     }
-    private fun change(action:()->Unit):Boolean {
-        return try {action();store.updateRouting(expected,routing);expected=routing.toString();draw();true}
-        catch(e:Exception) {Toast.makeText(this,e.message ?: "规则保存失败",Toast.LENGTH_LONG).show();routing=JSONObject(expected);draw();false}
+    private fun change(action:()->Unit)=change(action,null)
+    private fun change(action:()->Unit,onSaved:(()->Unit)?) {
+        if(busy) return
+        val before=expected
+        try {action()} catch(e:Exception) {routing=JSONObject(before);Toast.makeText(this,e.message ?: "规则无效",Toast.LENGTH_LONG).show();return}
+        val next=JSONObject(routing.toString());busy=true;draw()
+        io.execute {
+            val result=runCatching {store.updateRouting(before,next)}
+            runOnUiThread {
+                busy=false;if(isDestroyed)return@runOnUiThread
+                if(result.isSuccess) {routing=next;expected=next.toString();draw();onSaved?.invoke()}
+                else {routing=JSONObject(before);draw();Toast.makeText(this,result.exceptionOrNull()?.message ?: "规则保存失败",Toast.LENGTH_LONG).show()}
+            }
+        }
     }
     private fun move(array:JSONArray,index:Int,delta:Int) {
         val other=index+delta;if(other !in 0 until array.length()) return
@@ -46,6 +60,7 @@ class RoutingActivity : Activity() {
         val scroll=ScrollView(this);root=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL};scroll.addView(root);outer.addView(scroll);setContentView(outer);outer.requestFocus();outer.requestApplyInsets()
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         button("返回设置") {finish()};text("路由规则",24f)
+        if(busy) {text("正在校验并保存规则…");return}
         text("组间、组内均从上到下首次命中。停用组或规则不参与匹配。修改后下次连接生效；默认仍为所选节点。")
         if(PrismVpnService.stage in listOf("已连接","正在连接","正在断开")) text("VPN 运行中：请断开后修改。")
         button("默认出口：${routing.getString("defaultTarget")}") {
@@ -82,13 +97,13 @@ class RoutingActivity : Activity() {
         }
         if(page>0) button("上一页") {page--;draw()}
         if((page+1)*25<rules.length()) button("下一页") {page++;draw()}
-        text("SELECTED = 所选节点；DIRECT = 直连；REJECT = 拒绝。CIDR 可选择不解析域名；域名仅支持 ASCII/punycode。当前不导入桌面进程、Geo 或链式规则。",12f)
+        text("SELECTED = 所选节点或自动优选；DIRECT = 直连；REJECT = 拒绝。CIDR/GeoIP 可选择不解析域名。地区规则依照本页顺序首次命中；各最多启用 8 个 GeoIP/GeoSite 分类，须先在设置下载数据。域名仅支持 ASCII/punycode，不导入桌面进程或链式规则。",12f)
     }
     private fun nameDialog(index:Int?) {
         val input=EditText(this).apply {hint="规则组名称";isSingleLine=true;setText(index?.let {groups().getJSONObject(it).getString("name")} ?: "")}
         val dialog=AlertDialog.Builder(this).setTitle(if(index==null) "新建规则组" else "重命名规则组").setView(input).setNegativeButton("取消",null).setPositiveButton("保存",null).create()
         dialog.setOnShowListener {dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            if(change {if(index==null) {groups().put(JSONObject().put("name",input.text.toString().trim()).put("enabled",true).put("rules",JSONArray()));group=groups().length()-1;page=0} else groups().getJSONObject(index).put("name",input.text.toString().trim())}) dialog.dismiss()
+            change({if(index==null) {groups().put(JSONObject().put("name",input.text.toString().trim()).put("enabled",true).put("rules",JSONArray()));group=groups().length()-1;page=0} else groups().getJSONObject(index).put("name",input.text.toString().trim())}) {dialog.dismiss()}
         }};dialog.show()
     }
     private fun editRule(index:Int?) {
@@ -101,7 +116,7 @@ class RoutingActivity : Activity() {
         val dialog=AlertDialog.Builder(this).setTitle(if(index==null) "添加规则" else "编辑规则").setView(layout).setNegativeButton("取消",null).setPositiveButton("保存",null).create()
         dialog.setOnShowListener {dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val rule=JSONObject().put("kind",kinds[kind.selectedItemPosition]).put("value",value.text.toString().trim()).put("target",targets[target.selectedItemPosition]).put("enabled",old?.optBoolean("enabled",true) ?: true).put("noResolve",noResolve.isChecked)
-            if(change {if(index==null) rules().put(rule) else rules().put(index,rule)}) dialog.dismiss()
+            change({if(index==null) rules().put(rule) else rules().put(index,rule)}) {dialog.dismiss()}
         }};dialog.show()
     }
     private fun importRules() {
@@ -113,8 +128,9 @@ class RoutingActivity : Activity() {
                 val result=JSONObject(CoreBridge.routing(JSONObject().put("action","import").put("text",input.text.toString()).toString()))
                 require(!result.has("error")) {result.optString("error")}
                 val incoming=result.getJSONArray("rules")
-                if(change {for(i in 0 until incoming.length()) rules().put(incoming.getJSONObject(i))}) dialog.dismiss()
+                change({for(i in 0 until incoming.length()) rules().put(incoming.getJSONObject(i))}) {dialog.dismiss()}
             } catch(e:Exception) {Toast.makeText(this,e.message ?: "导入失败",Toast.LENGTH_LONG).show()}
         }};dialog.show()
     }
+    override fun onDestroy() {io.shutdown();super.onDestroy()}
 }

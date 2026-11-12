@@ -267,6 +267,7 @@ class MainActivity : Activity() {
                 val defaultTarget=when(stats.getString("defaultTarget")) {"DIRECT"->"直连";"REJECT"->"拒绝";else->stats.getString("nodeName")}
                 dashboard?.text="内核运行中 · %02d:%02d:%02d\n%s\n活跃连接 %d\n策略：规则分流 · %d 条启用规则\n默认出口：%s".format(
                     seconds/3600,seconds/60%60,seconds%60,speed,stats.getInt("connections"),stats.getInt("activeRules"),defaultTarget)
+                if(!stats.optBoolean("geodataValid",true)) dashboard?.append("\n地区数据校验失败，保留旧路由；请断开后更新地区数据。")
             }
         }
     }
@@ -366,6 +367,7 @@ class MainActivity : Activity() {
         label("按规则组和组内顺序首次命中；可直连、拒绝或使用所选节点。原有直连规则按原顺序保留。修改须先断开 VPN。",13f)
         button("管理路由规则") {startActivity(Intent(this,RoutingActivity::class.java))}
         button("自动优选节点") {startActivity(Intent(this,AutomaticActivity::class.java))}
+        button("地区数据与分类") {startActivity(Intent(this,GeoDataActivity::class.java))}
         }
         card {
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)

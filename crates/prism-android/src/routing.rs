@@ -62,7 +62,7 @@ impl Rule {
                 && !value.chars().any(|c| c.is_control() || c == ','),
             "规则参数为空、过长或含非法分隔符"
         );
-        let ip = matches!(self.kind.as_str(), "IP-CIDR" | "SRC-IP-CIDR");
+        let ip = matches!(self.kind.as_str(), "IP-CIDR" | "SRC-IP-CIDR" | "GEOIP");
         match self.kind.as_str() {
             "DOMAIN" | "DOMAIN-SUFFIX" => {
                 ensure!(domain(&value), "域名格式无效，请使用 ASCII 或 punycode")
@@ -91,6 +91,14 @@ impl Rule {
                 matches!(value.as_str(), "tcp" | "udp"),
                 "网络须为 TCP 或 UDP"
             ),
+            "GEOSITE" | "GEOIP" => ensure!(
+                value.len() <= 80
+                    && value.split('@').count() <= 2
+                    && value.split('@').all(|p| !p.is_empty()
+                        && p.bytes()
+                            .all(|c| c.is_ascii_alphanumeric() || b"_-!".contains(&c))),
+                "地区分类格式无效"
+            ),
             _ => bail!("不支持的规则类型"),
         }
         let mut line = format!("{},{},{}", self.kind, value, target(&self.target)?);
@@ -101,8 +109,28 @@ impl Rule {
     }
 }
 impl Routing {
+    pub fn geo_codes(&self) -> (Vec<String>, Vec<String>) {
+        let mut ip = std::collections::BTreeSet::new();
+        let mut site = std::collections::BTreeSet::new();
+        for group in self.groups.iter().filter(|g| g.enabled) {
+            for rule in group.rules.iter().filter(|r| r.enabled) {
+                if rule.kind == "GEOIP" {
+                    ip.insert(rule.value.trim().to_ascii_lowercase());
+                }
+                if rule.kind == "GEOSITE" {
+                    site.insert(rule.value.trim().to_ascii_lowercase());
+                }
+            }
+        }
+        (ip.into_iter().collect(), site.into_iter().collect())
+    }
     pub fn compile(&self) -> Result<Vec<String>> {
         ensure!(self.version == 1, "不支持的规则配置版本");
+        let (ip, site) = self.geo_codes();
+        ensure!(
+            ip.len() <= 8 && site.len() <= 8,
+            "最多启用各 8 个 GeoIP/GeoSite 分类"
+        );
         ensure!(self.groups.len() <= 32, "最多 32 个规则组");
         ensure!(
             self.groups.iter().map(|g| g.rules.len()).sum::<usize>() <= 500,
@@ -143,7 +171,8 @@ impl Routing {
             );
             ensure!(
                 parts.len() != 4
-                    || parts[3] == "no-resolve" && matches!(parts[0], "IP-CIDR" | "SRC-IP-CIDR"),
+                    || parts[3] == "no-resolve"
+                        && matches!(parts[0], "IP-CIDR" | "SRC-IP-CIDR" | "GEOIP"),
                 "第 {} 行标志无效",
                 index + 1
             );
