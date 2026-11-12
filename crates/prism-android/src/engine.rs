@@ -14,7 +14,7 @@ use std::{
     os::fd::FromRawFd,
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc, Arc, Mutex,
     },
     time::{Duration, Instant},
@@ -29,8 +29,13 @@ struct Running {
     handle: Handle,
     alive: Arc<AtomicBool>,
     changes: channel::UnboundedSender<()>,
+    started: Instant,
+    session_id: u64,
+    node_name: String,
+    direct_rules: usize,
 }
 static ENGINE: Mutex<Option<Running>> = Mutex::new(None);
+static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 fn text(env: &mut JNIEnv, value: Value) -> jstring {
     env.new_string(value.to_string())
         .map(|s| s.into_raw())
@@ -79,6 +84,8 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
         let Ok(session) = serde_json::from_str::<Session>(&raw) else {
             return json!({"error":"节点配置无效"});
         };
+        let node_name = session.node.name.clone();
+        let direct_rules = session.direct.len();
         let Ok((profile, reload)) = profile::build(session) else {
             return json!({"error":"节点或直连规则不受支持"});
         };
@@ -141,7 +148,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                     let hub = tokio::time::timeout(Duration::from_secs(8), Hub::new(Source::default(), home, profile)).await??;
                     let tun = prism_core::tun::attach_android(descriptor, hub.clone(), stop.clone())?;
                     living.store(true, Ordering::Release);
-                    let _ = ready_tx.send((hub.clone(), Handle::current()));
+                    let _ = ready_tx.send((hub.clone(), Handle::current(), Instant::now()));
                     tokio::pin!(tun);
                     let mut last_change = Instant::now() - Duration::from_secs(5);
                     loop {
@@ -177,7 +184,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
             }
         });
         match ready_rx.recv_timeout(Duration::from_secs(10)) {
-            Ok((hub, handle)) => {
+            Ok((hub, handle, started)) => {
                 *slot = Some(Running {
                     cancel,
                     join,
@@ -185,6 +192,10 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                     handle,
                     alive,
                     changes,
+                    started,
+                    session_id: NEXT_SESSION.fetch_add(1, Ordering::Relaxed),
+                    node_name,
+                    direct_rules,
                 });
                 json!({"ok":true})
             }
@@ -243,7 +254,10 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_status(
             Some(r) => {
                 let s = r.hub.core().tunnel.stats.clone();
                 let (received, sent) = prism_core::tun::android_packet_counts();
-                json!({"running":r.alive.load(Ordering::Acquire),"upload":s.upload.load(Ordering::Relaxed),"download":s.download.load(Ordering::Relaxed),"tunReceived":received,"tunSent":sent})
+                let connections = s.conns.lock().unwrap_or_else(|p| p.into_inner()).len();
+                json!({"running":r.alive.load(Ordering::Acquire),"upload":s.upload.load(Ordering::Relaxed),"download":s.download.load(Ordering::Relaxed),"tunReceived":received,"tunSent":sent,
+                    "sessionId":r.session_id.to_string(),"uptimeMs":r.started.elapsed().as_millis() as u64,
+                    "connections":connections,"nodeName":r.node_name,"directRules":r.direct_rules})
             }
             None => json!({"running":false,"upload":0,"download":0}),
         }

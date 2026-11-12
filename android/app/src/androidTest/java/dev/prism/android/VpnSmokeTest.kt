@@ -112,6 +112,7 @@ class VpnSmokeTest {
             context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             instrumentation.waitForIdleSync(); Thread.sleep(500)
             context.startForegroundService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT))
+            var previousSession=""
             try {
                 await("已连接"); Thread.sleep(500)
                 dns(false); dns(true)
@@ -120,9 +121,22 @@ class VpnSmokeTest {
                 http(); udp()
                 assertTrue(socks.count.get()>0)
                 assertTrue("UDP must reach the proxy relay",socks.udpCount.get()>0)
-                assertTrue(JSONObject(CoreBridge.status()).getBoolean("running"))
+                val status=JSONObject(CoreBridge.status())
+                assertTrue(status.getBoolean("running"))
+                assertTrue(status.getLong("uptimeMs")>0)
+                assertTrue(status.getLong("upload")>0)
+                assertTrue(status.getLong("download")>0)
+                assertTrue("UDP relay must be counted as active",status.getInt("connections")>0)
+                assertEquals("mock",status.getString("nodeName"))
+                assertEquals(0,status.getInt("directRules"))
+                val session=status.getString("sessionId")
+                previousSession=session
                 CoreBridge.networkChanged(); Thread.sleep(600)
                 dns(false); http(); udp()
+                val reloaded=JSONObject(CoreBridge.status())
+                assertEquals(session,reloaded.getString("sessionId"))
+                assertTrue(reloaded.getLong("uptimeMs")>=status.getLong("uptimeMs"))
+                assertTrue(reloaded.getLong("upload")>=status.getLong("upload"))
                 val before=socks.count.get()
                 Socket().use {s ->
                     s.soTimeout=2000
@@ -133,10 +147,17 @@ class VpnSmokeTest {
                 context.startService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.DISCONNECT))
                 await("已断开")
             }
-            assertFalse(JSONObject(CoreBridge.status()).getBoolean("running"))
+            val stopped=JSONObject(CoreBridge.status())
+            assertFalse(stopped.getBoolean("running"))
+            assertEquals(0L,stopped.getLong("upload"))
+            assertEquals(0L,stopped.getLong("download"))
             repeat(3) {
                 context.startForegroundService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT))
-                try { await("已连接"); dns(false); http() }
+                try {
+                    await("已连接"); dns(false); http()
+                    val nextSession=JSONObject(CoreBridge.status()).getString("sessionId")
+                    assertNotEquals(previousSession,nextSession); previousSession=nextSession
+                }
                 finally { context.startService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.DISCONNECT)); await("已断开") }
             }
         }

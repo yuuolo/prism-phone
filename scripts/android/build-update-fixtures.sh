@@ -5,8 +5,11 @@ scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 assets=android/app/src/androidTest/assets
 mkdir -p "$assets"
-cat > "$scratch/AndroidManifest.xml" <<'XML'
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.prism.android" android:versionCode="3" android:versionName="0.2.1-test">
+current_code=$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\)[[:space:]]*$/\1/p' android/app/build.gradle.kts)
+[[ "$current_code" =~ ^[0-9]+$ ]]
+future_code=$((current_code + 1))
+cat > "$scratch/AndroidManifest.xml" <<XML
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.prism.android" android:versionCode="$future_code" android:versionName="0.2.1-test">
 <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="37" />
 <application android:label="Update verification fixture" android:hasCode="false" />
 </manifest>

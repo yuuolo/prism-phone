@@ -23,10 +23,16 @@ class MainActivity : Activity() {
     private lateinit var store: ProfileStore
     private val io = Executors.newSingleThreadExecutor()
     private val updatesIo = Executors.newSingleThreadExecutor()
+    private val statsIo = Executors.newSingleThreadExecutor()
+    private val trafficRates = TrafficRates()
+    private var resumed = false
+    private var statsPending = false
+    private var statsEpoch = 0
     private val main = Handler(Looper.getMainLooper())
     private var tab = 0
     private var status: TextView? = null
     private var counters: TextView? = null
+    private var dashboard: TextView? = null
     private var connect: Button? = null
     private var nodes: Spinner? = null
     @Volatile private var busy = false
@@ -96,6 +102,7 @@ class MainActivity : Activity() {
     override fun onSaveInstanceState(out: Bundle) {out.putInt("tab",tab); super.onSaveInstanceState(out)}
     override fun onNewIntent(next: Intent) {super.onNewIntent(next); setIntent(next); if(next.getBooleanExtra("updates",false)) {tab=3; render()}}
     private fun render() {
+        statsEpoch++; trafficRates.reset()
         val host=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL; setBackgroundColor(PrismStyle.background)}
         host.setOnApplyWindowInsetsListener {view,insets ->
             if(Build.VERSION.SDK_INT>=30) {
@@ -110,7 +117,7 @@ class MainActivity : Activity() {
         centered.addView(root,FrameLayout.LayoutParams(if(resources.configuration.screenWidthDp>640) dp(640) else -1,-2,Gravity.TOP or Gravity.CENTER_HORIZONTAL))
         scroller.addView(centered); host.addView(scroller,LinearLayout.LayoutParams(-1,0,1f))
         setContentView(host); host.requestApplyInsets(); darkCard=false
-        status=null; counters=null; connect=null; nodes=null
+        status=null; counters=null; dashboard=null; connect=null; nodes=null
         val brand=LinearLayout(this).apply {gravity=Gravity.CENTER_VERTICAL}
         brand.addView(ImageView(this).apply {setImageResource(R.drawable.ic_prism); importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO},LinearLayout.LayoutParams(dp(26),dp(26)))
         brand.addView(TextView(this).apply {text="  PRISM"; textSize=20f; gravity=Gravity.CENTER_VERTICAL; letterSpacing=.12f; setTextColor(PrismStyle.ink); setTypeface(typeface,Typeface.BOLD)},LinearLayout.LayoutParams(0,dp(44),1f))
@@ -164,6 +171,11 @@ class MainActivity : Activity() {
         counters=label("↑ 0 B    ↓ 0 B")
         }
         card {
+            label("实时概况",19f)
+            dashboard=label("内核未运行",14f)
+            label("速率为相邻采样间的平均值。累计仅含本次 VPN 会话的 TCP/UDP 转发载荷（含直连），不含协议开销和内核 DNS 查询；断开后重置。",12f)
+        }
+        card {
         label("连接质量",19f)
         button("测试当前节点") {
             if(PrismVpnService.stage!="已连接") message("请先连接")
@@ -192,9 +204,40 @@ class MainActivity : Activity() {
         connect?.isEnabled=stage!="正在断开" && (nodeCount>0 || !idle()) && (!busy || !idle())
         connect?.alpha=if(connect?.isEnabled==true) 1f else .5f
         nodes?.isEnabled=idle() && nodeCount>0 && !busy
-        if(stage=="已连接") runCatching {
-            val stats=JSONObject(CoreBridge.status())
-            counters?.text="↑ ${formatBytes(stats.optLong("upload"))}    ↓ ${formatBytes(stats.optLong("download"))}"
+        if(stage=="已连接") refreshDashboard()
+        else {
+            statsEpoch++; trafficRates.reset()
+            counters?.text="↑ 0 B    ↓ 0 B"
+            dashboard?.text=if(stage=="正在连接") "等待内核就绪" else "内核未运行"
+        }
+    }
+    private fun refreshDashboard() {
+        if(!resumed || statsPending) return
+        statsPending=true
+        val epoch=statsEpoch
+        // JNI can wait for service startup/teardown. Keep it off the UI thread,
+        // allow only one request, and discard replies after navigation or pause.
+        statsIo.execute {
+            val result=runCatching {JSONObject(CoreBridge.status())}
+            val sampledAt=SystemClock.elapsedRealtime()
+            main.post {
+                statsPending=false
+                if(isDestroyed || !resumed || tab!=0 || epoch!=statsEpoch || PrismVpnService.stage!="已连接") return@post
+                val stats=result.getOrNull()
+                if(stats==null || !stats.optBoolean("running")) {
+                    trafficRates.reset()
+                    counters?.text="↑ —    ↓ —"
+                    dashboard?.text=if(stats==null) "无法读取内核状态" else "内核已停止，等待 VPN 服务断开"
+                    return@post
+                }
+                val upload=stats.getLong("upload"); val download=stats.getLong("download")
+                val rates=trafficRates.sample(TrafficRates.Sample(stats.getString("sessionId"),sampledAt,upload,download))
+                val speed=if(rates==null) "速率采样中…" else "↑ ${formatBytes(rates.upload)}/s    ↓ ${formatBytes(rates.download)}/s"
+                val seconds=stats.getLong("uptimeMs")/1000
+                counters?.text="本次累计 ↑ ${formatBytes(upload)}    ↓ ${formatBytes(download)}"
+                dashboard?.text="内核运行中 · %02d:%02d:%02d\n%s\n活跃连接 %d\n策略：规则分流 · %d 条直连规则\n默认出口：%s".format(
+                    seconds/3600,seconds/60%60,seconds%60,speed,stats.getInt("connections"),stats.getInt("directRules"),stats.getString("nodeName"))
+            }
         }
     }
     private fun profilesPage() {
@@ -394,11 +437,12 @@ class MainActivity : Activity() {
     private fun formatBytes(v: Long): String = when {v>=1024*1024 -> "%.1f MiB".format(v/1048576.0); v>=1024 -> "%.1f KiB".format(v/1024.0); else -> "$v B"}
     override fun onResume() {
         super.onResume()
+        resumed=true
         main.post(tick)
         if(Updates.enabled(this) && Updates.due(this)) checkUpdates(true)
         Updates.cached(this)?.let {Updates.notify(this,it)}
     }
-    override fun onPause() { main.removeCallbacks(tick); super.onPause() }
-    override fun onDestroy() { main.removeCallbacksAndMessages(null); io.shutdownNow(); updatesIo.shutdownNow(); super.onDestroy() }
+    override fun onPause() { resumed=false; statsEpoch++; trafficRates.reset(); main.removeCallbacks(tick); super.onPause() }
+    override fun onDestroy() { main.removeCallbacksAndMessages(null); io.shutdownNow(); updatesIo.shutdownNow(); statsIo.shutdownNow(); super.onDestroy() }
     private class UserMessage(message: String) : Exception(message)
 }

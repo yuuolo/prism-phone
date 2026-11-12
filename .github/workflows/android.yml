@@ -54,7 +54,7 @@ jobs:
           bash scripts/android/build-native.sh
       - name: Build APK and instrumentation
         run: |
-          bash android/gradlew -p android assembleDebug --stacktrace
+          bash android/gradlew -p android testDebugUnitTest assembleDebug --stacktrace
           bash scripts/android/build-update-fixtures.sh
           bash android/gradlew -p android assembleDebugAndroidTest assembleRelease lintDebug lintRelease --stacktrace
       - uses: actions/upload-artifact@v4

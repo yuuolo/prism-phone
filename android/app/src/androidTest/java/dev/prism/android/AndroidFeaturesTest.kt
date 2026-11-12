@@ -57,7 +57,7 @@ class AndroidFeaturesTest {
         // Test APK assets live in the instrumentation APK, rather than the app.
         fun asset(name: String)=File(context.cacheDir,name).apply {instrumentation.context.assets.open(name).use {input -> outputStream().use {input.copyTo(it)}}}
         val good=asset("future-update.apk"); val wrong=asset("wrong-signer.apk")
-        fun metadata(file: File)=AndroidUpdate(3,"0.2.1-test","https://github.com/yuuolo/prism/releases/download/android-v0.2.1/Prism.apk",
+        fun metadata(file: File)=AndroidUpdate(BuildConfig.VERSION_CODE.toLong()+1,"0.2.1-test","https://github.com/yuuolo/prism/releases/download/android-v0.2.1/Prism.apk",
             MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") {"%02x".format(it)},file.length(),"Test update",26)
         val update=metadata(good)
         assertEquals(update.code,Updates.parse(update.json()).code) // Legacy channel remains compatible.
@@ -65,7 +65,7 @@ class AndroidFeaturesTest {
         assertTrue(runCatching {Updates.parse(update.json().put("apkUrl","https://github.com/yuuolo/prism-phone-evil/releases/download/android-v0.2.1/Prism.apk"))}.isFailure)
         Updates.verifyDownloaded(context,good,update)
         assertTrue(runCatching {Updates.verifyDownloaded(context,wrong,metadata(wrong))}.isFailure)
-        assertTrue(runCatching {Updates.verifyPackage(context,good,2)}.isFailure)
+        assertTrue(runCatching {Updates.verifyPackage(context,good,BuildConfig.VERSION_CODE.toLong())}.isFailure)
         assertTrue(runCatching {Updates.parse(update.json().put("apkUrl","https://example.com/evil.apk"))}.isFailure)
         assertTrue(runCatching {Updates.parse(update.json().put("apkUrl","http://github.com/yuuolo/prism/releases/download/android-v3/a.apk"))}.isFailure)
         val damaged=File(context.cacheDir,"damaged.apk").apply {writeBytes(good.readBytes().apply {this[lastIndex]=(this[lastIndex].toInt() xor 1).toByte()})}
