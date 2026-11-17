@@ -79,16 +79,19 @@ def main():
         return result
 
     def ui():
-        remote = "/sdcard/Download/prism-background.xml"
+        # Fresh CI images need not have a Download directory. Use the mounted
+        # shared-storage root, which exists on both supported owned images.
+        remote = "/sdcard/prism-background.xml"
+        last_dump = ""
         for _ in range(3):
             shell("rm", "-f", remote)
-            shell("uiautomator", "dump", remote, check=False, timeout=20)
+            last_dump = shell("uiautomator", "dump", remote, check=False, timeout=20)
             raw = adb("exec-out", "cat", remote, check=False)
             try:
                 return ET.fromstring(raw)
             except ET.ParseError:
                 time.sleep(.5)
-        raise RuntimeError("No current UI hierarchy")
+        raise RuntimeError("No current UI hierarchy: " + last_dump[:180])
 
     def click_button(text):
         for node in ui().iter("node"):
