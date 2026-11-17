@@ -12,6 +12,8 @@
 
 ## 更新入口
 
+新客户端“打开安卓发布页”指向独立的 `yuuolo/prism-phone` 安卓发布列表；旧客户端通道及旧仓库镜像继续兼容，不移除旧下载地址。
+
 本机代理服务增加 `inbound.rs` 的受控监听入口、关联式 SOCKS UDP 与取消清理，`tunnel.rs` 增加任务中止时连接表清理和受限 UDP 会话，`net.rs` 增加 Android VPN 保护的监听 socket。原有桌面监听入口保持原行为；手机服务独立管理生命周期，断开 VPN 时回收。同步上游时需保留并重跑本机代理、流量、DNS 和网络恢复验收。
 
 - 新构建检查 `https://github.com/yuuolo/prism-phone/releases/download/android-updates/android-update.json`。

@@ -28,3 +28,20 @@ adb -s emulator-5560 shell am instrument -w -e phase verify dev.prism.android.te
 - 本记录不替代真机覆盖、厂商系统、长时后台、耗电及蜂窝网络切换验收。
 
 辅助程序的默认 runner 编译和回归由 `f5040f9` 的[完整 CI 44086595517](https://github.com/yuuolo/prism-phone/actions/runs/44086595517)通过，双系统各 17 项；CI 没有读取正式签名材料。
+
+## 2026-11-18 高版本系统安装器验收
+
+API 26 已验证真实已发布 Beta.2（code 3）经应用的“安装已下载的更新”、系统来源授权与系统安装确认，升级到本地 `0.2.0-acceptance.4`（code 4）。高版本候选没有通过 adb 安装；安装后 `passed-verify` 检查 UID、原 Keystore、节点/凭据/来源/ID/收藏/选择和旧规则迁移全部通过，内核配置校验通过，已安装版本不再由更新页提示为可更新。
+
+候选仅在忽略目录 `artifacts/signed-upgrade-high-version/` 构建、签署和使用，未发布。构建使用独立归档的 Android 源码，仅修改归档中的 versionCode/versionName；主仓库仍为 code 3 / Beta.2。双架构 JNI 原字节取自已通过[完整 CI 44147218755](https://github.com/yuuolo/prism-phone/actions/runs/44147218755)的 Release APK，来源摘要保存在该本地目录。候选和辅助 APK 沿用上文原证书，签名材料不上传。
+
+此项只覆盖**已校验缓存到系统安装器及数据保留**。缓存由显式辅助阶段准备并调用实际已安装 Beta.2 的 `Updates.verifyDownloaded`；没有访问虚构的新版本 URL，也没有模拟成一次真实线上检查/下载，不能据此关闭线上高版本检查和下载验收。
+
+复现时，先在独立归档中生成真实高版本的 BuildConfig 和 APK、沿用原证书签署，再把签署后的候选复制为该归档的 `app/src/androidTest/assets/installer-candidate.apk`，以高版本 BuildConfig 编译专用 `SignedUpgradeInstrumentation` APK并签署。只在明确归属本任务的空白模拟器执行：
+
+1. 安装真实 Beta.2 和专用辅助 APK，执行 `phase=prepare`，要求 `passed-prepare`。
+2. 执行 `phase=stage-install`，要求 `passed-stage-install`。该阶段要求候选高于已安装版本，生产校验器验证摘要、大小、包名、版本与原签名后才保存本地缓存元数据，关闭测试应用的自动更新检查。
+3. 辅助程序退出后从正常更新页点击安装，通过实际系统来源授权及安装确认。两个阶段之间不卸载、不清数据，不使用 adb 安装高版本候选。
+4. 包管理器报告高版本已安装后执行 `phase=verify`，要求 `passed-verify`；候选 BuildConfig、已安装版本与缓存版本必须一致，升级后不得继续提示安装相同版本。
+
+Android 17 的真实 Beta.2 已通过 prepare、stage-install 和生产缓存校验，但其来源设置默认是 “Ask every time”。旧 Beta.2 的前置 `canRequestPackageInstalls` 检查会把该状态引导回设置页；本轮保留按次授权，尚未完成该系统的高版本按钮安装路径，不将 API 26 的成功外推到 Android 17。原有双系统同版本覆盖记录仍然有效；ARM64 真机及完整线上高版本更新仍未验证。

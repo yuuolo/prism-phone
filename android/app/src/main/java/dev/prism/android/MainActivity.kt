@@ -434,7 +434,7 @@ class MainActivity : Activity() {
             }.isEnabled=!busy
             }
         }
-        button("打开安卓发布页") {startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://github.com/yuuolo/prism/releases?q=android-v")))}
+        button("打开安卓发布页") {startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://github.com/yuuolo/prism-phone/releases?q=android-v")))}
     }
     private fun checkUpdates(automatic: Boolean) {
         if(checkingUpdate || (!automatic && busy)) return

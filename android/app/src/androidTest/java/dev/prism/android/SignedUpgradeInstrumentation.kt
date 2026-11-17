@@ -9,7 +9,9 @@ import org.json.JSONObject
 import java.security.MessageDigest
 
 /** Invoke explicitly with phase=prepare on published Beta.2, then phase=verify
- * after adb install -r of the candidate. Never uninstall/clear between phases.
+ * after covering it with the candidate. Optional stage-install prepares a local
+ * verified cache for the normal app/system installer, not an online download.
+ * Never uninstall/clear between phases.
  * Not a JUnit test: ordinary CI must not touch a user's signing key or require
  * an older release installation. All data below is an isolated test fixture.
  */
@@ -46,7 +48,25 @@ class SignedUpgradeInstrumentation:Instrumentation() {
                         .put(JSONObject().put("kind","ip").put("value","127.0.0.0/8")))
                     store.save(state)
                     check(!context.getSharedPreferences("prism-mobile",0).getString("profile","")!!.contains("upgrade-fixture-secret"))
-                    check(proof.edit().putInt("uid",context.applicationInfo.uid).putString("fingerprint",fingerprint(store.load())).commit())
+                    check(proof.edit().remove("installerCode").putInt("uid",context.applicationInfo.uid).putString("fingerprint",fingerprint(store.load())).commit())
+                }
+                "stage-install"->{
+                    check(installed.versionCode==3 && proof.getInt("uid",-1)==context.applicationInfo.uid)
+                    check(BuildConfig.VERSION_CODE>installed.versionCode) {"Build the isolated acceptance source with a higher version"}
+                    val candidate=Updates.apk(context).apply {parentFile!!.mkdirs()}
+                    this.context.assets.open("installer-candidate.apk").use {input ->candidate.outputStream().use {input.copyTo(it)}}
+                    val update=AndroidUpdate(BuildConfig.VERSION_CODE.toLong(),BuildConfig.VERSION_NAME,
+                        "https://github.com/yuuolo/prism-phone/releases/download/android-v${BuildConfig.VERSION_NAME}/Prism-acceptance.apk",
+                        sha(candidate.readBytes()),candidate.length(),"Local installer acceptance only; not a published update",26)
+                    // Exercise the installed Beta.2 verifier. No HTTP endpoint is
+                    // contacted: this only prepares a verified downloaded cache.
+                    Updates.verifyDownloaded(context,candidate,update)
+                    Updates.setEnabled(context,false)
+                    val now=System.currentTimeMillis()
+                    check(context.getSharedPreferences("android-updates",0).edit()
+                        .putString("available",update.json().toString()).putLong("downloaded",update.code)
+                        .putLong("checked",now).putLong("attempted",now).commit())
+                    check(proof.edit().putLong("installerCode",update.code).commit())
                 }
                 "verify"->{
                     check(installed.versionCode==BuildConfig.VERSION_CODE && installed.versionCode>=3)
@@ -61,9 +81,13 @@ class SignedUpgradeInstrumentation:Instrumentation() {
                     check(!state.optJSONObject("chain").let {it?.optBoolean("enabled")==true})
                     check(!JSONObject(CoreBridge.validateSession(store.session())).has("error"))
                     check(fingerprint(store.load())==proof.getString("fingerprint",null))
+                    if(proof.contains("installerCode")) {
+                        check(installed.versionCode.toLong()==proof.getLong("installerCode",-1))
+                        check(Updates.cached(context)==null) {"Installed update must no longer be offered"}
+                    }
                     context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK));waitForIdleSync()
                 }
-                else->error("phase must be prepare or verify")
+                else->error("phase must be prepare, stage-install or verify")
             }
             finish(Activity.RESULT_OK,Bundle().apply {putString("upgradeAcceptance","passed-$phase")})
         }catch(error:Throwable){finish(Activity.RESULT_CANCELED,Bundle().apply {putString("upgradeAcceptance","failed-$phase");putString("failureType",error.javaClass.simpleName)})}

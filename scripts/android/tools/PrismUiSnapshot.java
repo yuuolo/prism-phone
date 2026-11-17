@@ -21,6 +21,10 @@ public final class PrismUiSnapshot {
         xml.attribute(null, "class", String.valueOf(item.getClassName()));
         xml.attribute(null, "package", String.valueOf(item.getPackageName()));
         xml.attribute(null, "enabled", String.valueOf(item.isEnabled()));
+        xml.attribute(null, "checked", String.valueOf(item.isChecked()));
+        xml.attribute(null, "clickable", String.valueOf(item.isClickable()));
+        xml.attribute(null, "resource-id", String.valueOf(item.getViewIdResourceName()));
+        xml.attribute(null, "content-desc", String.valueOf(item.getContentDescription() == null ? "" : item.getContentDescription()));
         xml.attribute(null, "bounds", "[" + bounds.left + "," + bounds.top + "][" + bounds.right + "," + bounds.bottom + "]");
         for (int i = 0; i < item.getChildCount(); i++) {
             AccessibilityNodeInfo child = item.getChild(i);
