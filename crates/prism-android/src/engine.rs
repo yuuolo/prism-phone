@@ -28,7 +28,8 @@ struct Running {
     hub: Arc<Hub>,
     handle: Handle,
     alive: Arc<AtomicBool>,
-    changes: channel::UnboundedSender<()>,
+    changes: channel::Sender<()>,
+    network_rebuilds: Arc<AtomicU64>,
     started: Instant,
     session_id: u64,
     node_name: String,
@@ -698,7 +699,9 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
         let geo_valid = Arc::new(AtomicBool::new(true));
         let geo_validation = geo_valid.clone();
         let (ready_tx, ready_rx) = mpsc::channel();
-        let (changes, mut changes_rx) = channel::unbounded_channel();
+        let (changes, mut changes_rx) = crate::recovery::channel();
+        let network_rebuilds = Arc::new(AtomicU64::new(0));
+        let rebuild_count = network_rebuilds.clone();
         let join = std::thread::spawn(move || {
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
                 || -> anyhow::Result<()> {
@@ -713,15 +716,12 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                     living.store(true, Ordering::Release);
                     let _ = ready_tx.send((hub.clone(), Handle::current(), Instant::now()));
                     tokio::pin!(tun);
-                    let mut last_change = Instant::now() - Duration::from_secs(5);
                     loop {
                         tokio::select! {
                             _ = stop.cancelled() => break,
                             result = &mut tun => {result?; break;},
-                            event = changes_rx.recv() => {
+                            event = changes_rx.next() => {
                                 if event.is_none() {break}
-                                if last_change.elapsed() < Duration::from_secs(3) {continue}
-                                last_change = Instant::now();
                                 if geo_used {
                                     let valid=geo_snapshot.as_ref().is_some_and(|s|s.verify(&geo_base).is_ok());
                                     geo_validation.store(valid,Ordering::Release);
@@ -732,7 +732,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                                     _ = stop.cancelled() => break,
                                     r = tokio::time::timeout(Duration::from_secs(8),hub.reload(Some(reload.clone()))) => r,
                                 };
-                                if matches!(rebuilt,Ok(Ok(()))) {hub.core().tunnel.stats.close_all();}
+                                if matches!(rebuilt,Ok(Ok(()))) {hub.core().tunnel.stats.close_all();rebuild_count.fetch_add(1,Ordering::Relaxed);}
                             }
                         }
                     }
@@ -760,6 +760,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                     handle,
                     alive,
                     changes,
+                    network_rebuilds,
                     started,
                     session_id: NEXT_SESSION.fetch_add(1, Ordering::Relaxed),
                     node_name,
@@ -834,7 +835,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_stopAndTraffic(
 pub extern "system" fn Java_dev_prism_android_CoreBridge_networkChanged(_: JNIEnv, _: JClass) {
     let _ = std::panic::catch_unwind(|| {
         if let Some(r) = ENGINE.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
-            let _ = r.changes.send(());
+            let _ = r.changes.try_send(());
         }
     });
 }
@@ -854,7 +855,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_status(
                     "sessionId":r.session_id.to_string(),"uptimeMs":r.started.elapsed().as_millis() as u64,
                     "connections":connections,"nodeName":current_node_name(r),"directRules":r.direct_rules,"activeRules":r.active_rules,"defaultTarget":r.default_target,
                     "automatic":r.automatic.as_ref().map(|p|p.snapshot(&r.hub)).unwrap_or_else(||json!({"enabled":false})),"geodataValid":r.geo_valid.load(Ordering::Acquire),
-                    "adblockEnabled":r.ads_enabled,"adsBlocked":s.ads_blocked.load(Ordering::Relaxed),"chain":r.chain.as_ref().map(|p|p.snapshot()).unwrap_or_else(||json!({"enabled":false}))})
+                    "adblockEnabled":r.ads_enabled,"adsBlocked":s.ads_blocked.load(Ordering::Relaxed),"networkRebuilds":r.network_rebuilds.load(Ordering::Relaxed),"chain":r.chain.as_ref().map(|p|p.snapshot()).unwrap_or_else(||json!({"enabled":false}))})
             }
             None => json!({"running":false,"upload":0,"download":0}),
         }

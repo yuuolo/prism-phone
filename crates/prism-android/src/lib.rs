@@ -9,4 +9,6 @@ mod engine;
 pub mod geodata;
 pub mod local_proxy;
 pub mod profile;
+#[cfg(any(target_os = "android", test))]
+mod recovery;
 pub mod routing;

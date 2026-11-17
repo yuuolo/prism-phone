@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- API 26 emulator shell lacks CHANGE_WIFI_STATE. Debug-only permissions
+         let the isolated acceptance test exercise real system transitions.
+         They must never enter the release variant. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+</manifest>

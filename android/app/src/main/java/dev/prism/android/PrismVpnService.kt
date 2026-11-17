@@ -48,6 +48,7 @@ class PrismVpnService : VpnService() {
     private val generation = AtomicInteger()
     private var descriptor: ParcelFileDescriptor? = null
     private var callback: ConnectivityManager.NetworkCallback? = null
+    private var defaultCallback: ConnectivityManager.NetworkCallback? = null
     private var destroyed = false
     private var vpnNetwork: Network? = null
     @Volatile private var activeCoreTicket = -1
@@ -167,15 +168,37 @@ class PrismVpnService : VpnService() {
     private fun observeNetworks() {
         if (callback != null) return
         val manager = getSystemService(ConnectivityManager::class.java)
-        val known = java.util.concurrent.ConcurrentHashMap.newKeySet<Network>()
-        manager.allNetworks.filter { n -> manager.getNetworkCapabilities(n)?.let { it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) } == true }.forEach { known.add(it) }
+        val ticket=activeCoreTicket
+        fun transports(c:NetworkCapabilities)=(0..3).fold(0){bits,t->if(c.hasTransport(t))bits or (1 shl t) else bits}
+        fun capabilities(c:NetworkCapabilities)=NetworkChangeState.Capabilities(transports(c),c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
+            Build.VERSION.SDK_INT>=28 && !c.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED))
+        fun links(p:LinkProperties)=NetworkChangeState.Links(p.interfaceName,p.linkAddresses.map{it.toString()}.sorted(),p.routes.map{it.toString()}.sorted(),p.dnsServers.map{it.hostAddress ?: ""}.sorted(),if(Build.VERSION.SDK_INT>=29)p.mtu else 0)
+        val state=NetworkChangeState<Network>(manager.activeNetwork?.let{manager.getNetworkCapabilities(it)}?.let{transports(it)})
+        manager.allNetworks.forEach {network ->manager.getNetworkCapabilities(network)?.takeIf{it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN)}?.let {c->
+            state.seed(network,capabilities(c),manager.getLinkProperties(network)?.let{links(it)})
+        }}
+        fun changed() {if(!destroyed && visibleService===this && activeCoreTicket==ticket && generation.get()==ticket && stage=="已连接")runCatching{CoreBridge.networkChanged()}}
         val next = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) { if (known.add(network)) changed() }
-            override fun onLost(network: Network) { if (known.remove(network)) changed() }
-            private fun changed() { if (stage == "已连接") runCatching { CoreBridge.networkChanged() } }
+            override fun onAvailable(network: Network) {if(state.available(network))changed()}
+            override fun onLost(network: Network) {if(state.lost(network))changed()}
+            override fun onCapabilitiesChanged(network:Network,c:NetworkCapabilities) {if(state.capabilities(network,capabilities(c)))changed()}
+            override fun onLinkPropertiesChanged(network:Network,p:LinkProperties) {if(state.links(network,links(p)))changed()}
         }
         callback = next
-        manager.registerNetworkCallback(NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), next)
+        manager.registerNetworkCallback(NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), next,main)
+        val defaults=object:ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network:Network,c:NetworkCapabilities) {
+                // A VPN keeps its Network identity while its OS-chosen physical
+                // default changes. Ignore VPN validation feedback to avoid loops.
+                if(c.hasTransport(NetworkCapabilities.TRANSPORT_VPN) && state.defaultTransport(transports(c)))changed()
+            }
+        }
+        defaultCallback=defaults;manager.registerDefaultNetworkCallback(defaults,main)
+    }
+    private fun stopObservingNetworks() {
+        val manager=getSystemService(ConnectivityManager::class.java)
+        callback?.let{runCatching{manager.unregisterNetworkCallback(it)}};callback=null
+        defaultCallback?.let{runCatching{manager.unregisterNetworkCallback(it)}};defaultCallback=null
     }
     /** Called only by the embedded core; never perform blocking JNI stop on this native thread. */
     fun onCoreStopped() {
@@ -228,7 +251,7 @@ class PrismVpnService : VpnService() {
         main.removeCallbacks(trafficTick)
         proxySummary=""
         val stopId=latestStartId
-        callback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }; callback = null
+        stopObservingNetworks()
         publish("正在断开")
         serial.execute {
             cleanup()
@@ -239,7 +262,7 @@ class PrismVpnService : VpnService() {
     override fun onDestroy() {
         destroyed = true; generation.incrementAndGet()
         main.removeCallbacks(trafficTick)
-        callback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }; callback = null
+        stopObservingNetworks()
         serial.execute { cleanup() }
         if (stage != "连接失败") publish("已断开", detail)
         if(visibleService===this) visibleService=null

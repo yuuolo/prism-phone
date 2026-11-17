@@ -3,7 +3,9 @@ set -euo pipefail
 mkdir -p emulator-results
 python3 -u scripts/android/doh-fixture.py > emulator-results/doh-fixture.txt 2>&1 &
 doh_pid=$!
-trap 'adb reverse --remove tcp:19091 2>/dev/null || true; kill "$doh_pid" 2>/dev/null || true' EXIT
+python3 -u scripts/android/doh-fixture.py --chain-first > emulator-results/doh-chain-first.txt 2>&1 &
+chain_pid=$!
+trap 'adb reverse --remove tcp:19091 2>/dev/null || true; kill "$doh_pid" "$chain_pid" 2>/dev/null || true' EXIT
 adb reverse tcp:19091 tcp:19090
 app=$(find "$1" -name '*debug.apk' ! -name '*androidTest*' | head -1)
 test=$(find "$1" -name '*androidTest.apk' | head -1)

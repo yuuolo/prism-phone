@@ -59,6 +59,14 @@ jobs:
           bash android/gradlew -p android testDebugUnitTest assembleDebug --stacktrace
           bash scripts/android/build-update-fixtures.sh
           bash android/gradlew -p android assembleDebugAndroidTest assembleRelease lintDebug lintRelease --stacktrace
+      - name: Release has no network-switch test permissions
+        run: |
+          "$ANDROID_HOME/build-tools/37.0.0/aapt2" dump permissions android/app/build/outputs/apk/release/app-release-unsigned.apk > release-permissions.txt
+          grep -Fxq 'package: dev.prism.android' release-permissions.txt
+          if grep -Eq 'android.permission.(CHANGE_WIFI_STATE|ACCESS_WIFI_STATE)' release-permissions.txt; then
+            cat release-permissions.txt
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: prism-android-unsigned-release
