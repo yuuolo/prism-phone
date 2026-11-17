@@ -129,8 +129,10 @@ class ChainTest {
                     assertTrue(JSONObject(CoreBridge.closeConnection(JSONObject().put("sessionId",session).put("id",row.getString("id")).toString())).getBoolean("closed"))
                     try{held.getInputStream().readBytes()}catch(e:SocketTimeoutException){throw AssertionError("Closing a chain connection did not close the wire",e)}catch(_:IOException){}
                 }
-                val images=File(context.getExternalFilesDir(null),"screenshots").apply{mkdirs()};click("返回设置")
-                context.startActivity(Intent(context,ChainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));assertTrue(device.wait(Until.hasObject(By.textContains("当前会话链路：FirstHop → ExitHop")),5000));device.takeScreenshot(File(images,"chain.png"))
+                val images=File(context.getExternalFilesDir(null),"screenshots").apply{mkdirs()}
+                // Clear the old task explicitly: launching immediately after finish()
+                // can reuse that finishing activity, then leave no resumed page.
+                context.startActivity(Intent(context,ChainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK));assertTrue("Running chain page did not appear",device.wait(Until.hasObject(By.textContains("当前会话链路：FirstHop → ExitHop")),5000));device.takeScreenshot(File(images,"chain.png"))
                 first.close();assertTrue(probe("203.0.113.53").has("error"));disconnect()
                 val disabled=JSONObject(configured.toString()).put("enabled",false);store.updateChain(configured.toString(),disabled);assertFalse(JSONObject(store.session()).has("chain"))
             }finally{if(PrismVpnService.stage in listOf("已连接","正在连接"))disconnect()}

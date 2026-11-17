@@ -75,6 +75,18 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - api: '37.0'
+            image: '37.2'
+            target: google_apis_ps16k
+            label: android17-16k
+          - api: '26'
+            image: '26'
+            target: google_apis
+            label: android8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -96,14 +108,14 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: '37.0'
-          system-image-api-level: '37.2'
+          api-level: ${{ matrix.api }}
+          system-image-api-level: ${{ matrix.image }}
           arch: x86_64
-          target: google_apis_ps16k
+          target: ${{ matrix.target }}
           disable-animations: true
           script: bash scripts/android/test-emulator.sh apk
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-emulator-results
+          name: android-emulator-results-${{ matrix.label }}
           path: emulator-results/

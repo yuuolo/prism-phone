@@ -12,7 +12,6 @@ import java.io.*
 import java.net.ServerSocket
 import java.net.Socket
 import javax.net.ssl.SSLSocket
-import javax.net.ssl.SSLSocketFactory
 
 @RunWith(AndroidJUnit4::class)
 class AutomaticTest {
@@ -80,7 +79,7 @@ class AutomaticTest {
                 val head=ByteArrayOutputStream()
                 while(!head.toString("US-ASCII").endsWith("\r\n\r\n") && head.size()<8192) {val b=transport.getInputStream().read();check(b>=0);head.write(b)}
                 assertTrue(head.toString("US-ASCII").startsWith("HTTP/1.1 200"))
-                ((SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket(transport,"1.1.1.1",443,true) as SSLSocket).use {tls ->
+                (LiveTlsFixture.factory().createSocket(transport,"1.1.1.1",443,true) as SSLSocket).use {tls ->
                     tls.soTimeout=8000;tls.sslParameters=tls.sslParameters.apply {endpointIdentificationAlgorithm="HTTPS"};tls.startHandshake()
                     tls.getOutputStream().write("GET / HTTP/1.1\r\nHost: 1.1.1.1\r\nConnection: close\r\n\r\n".toByteArray())
                     val reply=ByteArray(12);DataInputStream(tls.getInputStream()).readFully(reply);assertTrue(String(reply,Charsets.US_ASCII).startsWith("HTTP/"))

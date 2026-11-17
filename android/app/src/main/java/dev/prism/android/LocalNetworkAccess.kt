@@ -31,6 +31,14 @@ internal object LocalNetworkAccess {
         val host=server.trim().removeSurrounding("[","]").trimEnd('.').lowercase()
         if(host.endsWith(".local")) return true
         if(Build.VERSION.SDK_INT<29) {
+            // Restrict the old API parser to numeric IPv6 syntax so this never
+            // asks the system resolver about a node hostname.
+            if(':' in host && host.all {it in "0123456789abcdef:."}) {
+                val ip=runCatching {java.net.InetAddress.getByName(host)}.getOrNull() ?: return false
+                if(ip.isLoopbackAddress)return false
+                return ip.isSiteLocalAddress || ip.isLinkLocalAddress || ip.isMulticastAddress ||
+                    ip.address.let {it.size==16 && (it[0].toInt() and 0xfe)==0xfc}
+            }
             val labels=host.split('.'); if(labels.size!=4) return false
             val parts=labels.map {it.toIntOrNull() ?: return false}
             if(parts.any {it !in 0..255}) return false
