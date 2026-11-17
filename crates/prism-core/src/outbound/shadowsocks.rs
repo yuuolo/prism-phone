@@ -277,4 +277,96 @@ mod tests {
         assert_eq!(u16::from_be_bytes([l[0], l[1]]), 5);
         assert_eq!(dec.open(&out[2 + TAG..]).unwrap(), b"hello");
     }
+
+    // Exercise the actual AEAD wire frames over a real preceding SOCKS hop.
+    // The loopback server checks the requested destination; it never contacts it.
+    #[tokio::test]
+    async fn three_aead_methods_carry_tcp_and_udp_through_socks_hop() {
+        use std::sync::{Arc, atomic::Ordering};
+        use tokio::net::{TcpListener, UdpSocket};
+        use tokio_util::sync::CancellationToken;
+        use crate::{config::parse_any, hub::Hub, inbound};
+
+        async fn chunk(s: &mut tokio::net::TcpStream, cipher: &mut Cipher) -> Vec<u8> {
+            let mut len = [0; 2 + TAG];
+            s.read_exact(&mut len).await.unwrap();
+            let plain = cipher.open(&len).unwrap();
+            let n = u16::from_be_bytes([plain[0], plain[1]]) as usize;
+            assert!(n <= MAX_PAYLOAD);
+            let mut body = vec![0; n + TAG];
+            s.read_exact(&mut body).await.unwrap();
+            cipher.open(&body).unwrap()
+        }
+        let mut pair = None;
+        let mut seed = 0u32;
+        for attempt in 0..32 {
+            let port = if attempt == 0 { 0 } else { (1024 + (seed + attempt * 9973) % 64512) as u16 };
+            let Ok(tcp) = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await else { continue };
+            if attempt == 0 { seed = tcp.local_addr().unwrap().port() as u32; }
+            if let Ok(udp) = UdpSocket::bind(tcp.local_addr().unwrap()).await {
+                pair = Some((tcp, udp)); break;
+            }
+        }
+        let (tcp, udp) = pair.expect("TCP/UDP test port");
+        let first_port = tcp.local_addr().unwrap().port();
+        let hub = Hub::new(Default::default(), ".".into(), parse_any("proxies: []\nrules: ['MATCH,DIRECT']\nfind-process-mode: off").unwrap()).await.unwrap();
+        let stop = CancellationToken::new();
+        let assoc = inbound::UdpAssociations::new(stop.clone());
+        let tcp_task = tokio::spawn(inbound::serve_managed(tcp, hub.clone(), stop.clone(), assoc.clone()));
+        let udp_task = tokio::spawn(inbound::serve_udp_managed(udp, hub.clone(), stop.clone(), assoc));
+        let first: Arc<dyn Outbound> = super::super::build_proxy(&ProxyConfig {
+            name: "first".into(), kind: Some(crate::config::ProxyKind::Socks5), server: "127.0.0.1".into(), port: first_port, ..Default::default()
+        }, Dialer::Direct).unwrap();
+        for (method, cipher_name) in [(Method::Aes128, "aes-128-gcm"), (Method::Aes256, "aes-256-gcm"), (Method::Chacha, "chacha20-ietf-poly1305")] {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let packet = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+            let udp_port = packet.local_addr().unwrap().port();
+            let server = tokio::spawn(async move {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let master = evp_bytes_to_key(b"chain-test", method.key_len());
+                let mut salt = vec![0; method.key_len()];
+                socket.read_exact(&mut salt).await.unwrap();
+                let mut dec = Cipher::new(method, &master, &salt);
+                let address = chunk(&mut socket, &mut dec).await;
+                assert_eq!(address, [1,203,0,113,9,1,187]);
+                let data = chunk(&mut socket, &mut dec).await;
+                assert_eq!(data, b"chain-tcp");
+                let salt = vec![31; method.key_len()];
+                let mut enc = Cipher::new(method, &master, &salt);
+                let mut reply = salt;
+                enc.seal_chunk(b"tcp-return", &mut reply);
+                socket.write_all(&reply).await.unwrap();
+            });
+            let datagrams = tokio::spawn(async move {
+                let mut buf = vec![0; 65535];
+                let (n, from) = packet.recv_from(&mut buf).await.unwrap();
+                let kl = method.key_len();
+                let master = evp_bytes_to_key(b"chain-test", kl);
+                let plain = Cipher::new(method, &master, &buf[..kl]).open(&buf[kl..n]).unwrap();
+                assert_eq!(&plain[..7], &[1,203,0,113,9,1,187]);
+                assert_eq!(&plain[7..], b"chain-udp");
+                let salt = vec![73; kl];
+                let mut reply = salt.clone();
+                let mut data = plain[..7].to_vec(); data.extend_from_slice(b"udp-return");
+                reply.extend(Cipher::new(method, &master, &salt).seal(&data));
+                packet.send_to(&reply, from).await.unwrap();
+            });
+            let cfg = |port| ProxyConfig {name:"last".into(), kind:Some(crate::config::ProxyKind::Shadowsocks), server:"127.0.0.1".into(), port, password:Some("chain-test".into()), cipher:Some(cipher_name.into()), ..Default::default()};
+            let target = Address::new("203.0.113.9", 443);
+            let mut tcp = Shadowsocks::new(&cfg(port), Dialer::Via(first.clone())).unwrap().connect(&target).await.unwrap();
+            tcp.write_all(b"chain-tcp").await.unwrap();
+            let mut reply = [0; 10];
+            tokio::time::timeout(std::time::Duration::from_secs(3), tcp.read_exact(&mut reply)).await.unwrap().unwrap();
+            assert_eq!(&reply, b"tcp-return"); drop(tcp);
+            let mut udp = Shadowsocks::new(&cfg(udp_port), Dialer::Via(first.clone())).unwrap().connect_udp(&target).await.unwrap();
+            udp.tx.send(b"chain-udp".to_vec()).await.unwrap();
+            assert_eq!(tokio::time::timeout(std::time::Duration::from_secs(3), udp.rx.recv()).await.unwrap().unwrap(), b"udp-return");
+            drop(udp);
+            server.await.unwrap(); datagrams.await.unwrap();
+        }
+        assert!(hub.core().tunnel.stats.upload.load(Ordering::Relaxed) > 0);
+        stop.cancel(); tcp_task.await.unwrap(); udp_task.await.unwrap();
+        hub.core().shutdown.cancel();
+    }
 }

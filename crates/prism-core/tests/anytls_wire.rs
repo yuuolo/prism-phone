@@ -150,9 +150,10 @@ async fn padded_records(fingerprint: Option<&str>) {
     assert!((100..400).contains(&plain[0]), "{plain:?}");
     // Packet 2 ("a"): 400-500, then the check stops it.
     assert!((400..500).contains(&plain[1]), "{plain:?}");
-    // Packet 3 ("b"): 9-9 holds the 8 bytes as they are, then 500-1000 of waste.
+    // Packet 3 ("b"): 9-9 holds the 8 bytes as they are, then 500-1000
+    // bytes of waste payload PLUS the seven-byte AnyTLS frame header.
     assert_eq!(plain[2], 8, "{plain:?}");
-    assert!((500..1000).contains(&plain[3]), "{plain:?}");
+    assert!((507..1007).contains(&plain[3]), "{plain:?}");
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(payload.lock().unwrap().as_slice(), b"abc");
 }

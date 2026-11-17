@@ -218,6 +218,34 @@ mod tests {
             let plan = Plan { hops, udp_enabled };
             let root = client(plan.clone()).await;
             let tunnel = root.core().tunnel.clone();
+            // Mobile IPv6 denial must happen before contacting any chain hop.
+            let first_before = peers[0]
+                .hub
+                .core()
+                .tunnel
+                .stats
+                .upload
+                .load(Ordering::Relaxed);
+            let mut blocked = Metadata::new(
+                Network::Tcp,
+                "ChainIpv6Test",
+                "127.0.0.1:1234".parse().unwrap(),
+                Address::new("2001:db8::9", 443),
+                None,
+            );
+            assert!(tunnel.dial(&mut blocked).await.is_err());
+            blocked.network = Network::Udp;
+            assert!(tunnel.dial_udp(&mut blocked).await.is_err());
+            assert_eq!(
+                first_before,
+                peers[0]
+                    .hub
+                    .core()
+                    .tunnel
+                    .stats
+                    .upload
+                    .load(Ordering::Relaxed)
+            );
             let mut meta = Metadata::new(
                 Network::Tcp,
                 "ChainTest",
