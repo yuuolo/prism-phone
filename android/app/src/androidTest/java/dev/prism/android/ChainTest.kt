@@ -147,7 +147,17 @@ class ChainTest {
             try {
                 connect();var dns=JSONObject();repeat(3){if(!dns.has("addresses"))dns=JSONObject(CoreBridge.diagnose("{\"kind\":\"dns\",\"host\":\"example.com\"}"))}
                 assertTrue("Real chained DoH failed: $dns",dns.has("addresses"));assertTrue(first.tcp.get()>0);assertTrue(dns.getString("path").contains("FirstHop → ExitHop"));assertEquals("ExitHop",dns.getString("nodeName"))
-                val session=JSONObject(CoreBridge.status()).getString("sessionId");Thread.sleep(3200);CoreBridge.networkChanged();Thread.sleep(500)
+                val session=JSONObject(CoreBridge.status()).getString("sessionId")
+                val device=UiDevice.getInstance(instrumentation)
+                try {
+                    device.pressHome();device.sleep()
+                    assertFalse("Emulator screen did not turn off",context.getSystemService(android.os.PowerManager::class.java).isInteractive)
+                    Thread.sleep(1200)
+                    val background=JSONObject(CoreBridge.diagnose("{\"kind\":\"dns\",\"host\":\"example.org\"}"))
+                    assertTrue("Screen-off chain DNS failed: $background",background.has("addresses"))
+                    assertEquals(session,JSONObject(CoreBridge.status()).getString("sessionId"))
+                }finally{device.wakeUp();device.pressMenu()}
+                Thread.sleep(3200);CoreBridge.networkChanged();Thread.sleep(500)
                 dns=JSONObject(CoreBridge.diagnose("{\"kind\":\"dns\",\"host\":\"example.net\"}"));assertTrue(dns.toString(),dns.has("addresses"));assertEquals(session,JSONObject(CoreBridge.status()).getString("sessionId"))
                 first.close();val failed=JSONObject(CoreBridge.diagnose("{\"kind\":\"dns\",\"host\":\"www.iana.org\"}"));assertTrue("DNS must not bypass the missing first hop: $failed",failed.has("error"));assertFalse(failed.has("addresses"))
             }finally{if(PrismVpnService.stage in listOf("已连接","正在连接"))disconnect();context.getSharedPreferences("prism-mobile",0).edit().clear().commit()}
