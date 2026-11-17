@@ -232,7 +232,7 @@ class VpnSmokeTest {
         val query=JSONObject().put("network","udp").put("route","proxy").put("search","203.0.113.7").toString()
         val page=JSONObject(CoreBridge.connections(query))
         assertEquals(session,page.getString("sessionId"))
-        assertEquals(1,page.getInt("matched"))
+        assertEquals("UDP snapshot=$page; core=${CoreBridge.status()}",1,page.getInt("matched"))
         val udp=page.getJSONArray("connections").getJSONObject(0)
         assertEquals("203.0.113.7:3478",udp.getString("destination"))
         assertTrue(udp.getString("rule").isNotEmpty())

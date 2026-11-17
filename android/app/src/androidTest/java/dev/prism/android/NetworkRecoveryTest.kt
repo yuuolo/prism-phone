@@ -47,6 +47,8 @@ class NetworkRecoveryTest {
         assertTrue("Real chained DoH failed: $result",result.has("addresses"));assertEquals("Recovery exit",result.getString("nodeName"))
     }
     private fun applicationTls(port:Int) {
+        val rebuilds=status().getLong("networkRebuilds")
+        try {
         Socket("127.0.0.1",port).use {transport ->
             transport.soTimeout=8000;transport.getOutputStream().write("CONNECT 1.1.1.1:443 HTTP/1.1\r\nHost: 1.1.1.1:443\r\n\r\n".toByteArray())
             val head=ByteArrayOutputStream()
@@ -57,6 +59,9 @@ class NetworkRecoveryTest {
                 tls.getOutputStream().write("GET / HTTP/1.1\r\nHost: 1.1.1.1\r\nConnection: close\r\n\r\n".toByteArray())
                 val reply=ByteArray(12);DataInputStream(tls.getInputStream()).readFully(reply);assertTrue(String(reply,Charsets.US_ASCII).startsWith("HTTP/"))
             }
+        }
+        }catch(error:Exception) {
+            throw AssertionError("Application TLS failed: network rebuilds before=$rebuilds; after=${status().optLong("networkRebuilds")}",error)
         }
     }
     @Test fun trailingChangesAndRealVirtualNetworkSwitchKeepChainAndCounters() {
