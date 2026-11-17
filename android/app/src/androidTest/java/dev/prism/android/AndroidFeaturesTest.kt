@@ -103,6 +103,22 @@ class AndroidFeaturesTest {
         assertTrue(runCatching {Updates.parse(update.json().put("apkUrl","http://github.com/yuuolo/prism/releases/download/android-v3/a.apk"))}.isFailure)
         val damaged=File(context.cacheDir,"damaged.apk").apply {writeBytes(good.readBytes().apply {this[lastIndex]=(this[lastIndex].toInt() xor 1).toByte()})}
         assertTrue(runCatching {Updates.verifyDownloaded(context,damaged,update)}.isFailure)
+        val updatePrefs=context.getSharedPreferences("android-updates",0)
+        val cached=Updates.apk(context).apply {parentFile!!.mkdirs()}
+        damaged.copyTo(cached,overwrite=true)
+        updatePrefs.edit().putLong("downloaded",update.code).commit()
+        assertTrue(Updates.downloaded(context,update))
+        assertTrue(runCatching {Updates.verifyDownloaded(context,cached,update)}.isFailure)
+        assertTrue("Raw validation alone leaves the invalid downloaded hint",Updates.downloaded(context,update))
+        assertTrue(runCatching {Updates.prepareInstall(context,update)}.isFailure)
+        assertFalse(Updates.downloaded(context,update));assertFalse(cached.exists())
+        good.copyTo(cached,overwrite=true)
+        updatePrefs.edit().putLong("downloaded",update.code).commit()
+        assertEquals(cached,Updates.prepareInstall(context,update))
+        val stale=update.copy(code=update.code-1)
+        assertTrue(runCatching {Updates.prepareInstall(context,stale)}.isFailure)
+        assertTrue(Updates.downloaded(context,update));assertTrue(cached.exists())
+        assertEquals(cached,Updates.prepareInstall(context,update))
         Updates.apk(context).parentFile!!.mkdirs(); good.copyTo(Updates.apk(context),overwrite=true)
         context.contentResolver.openInputStream(Updates.installIntent(context).data!!)!!.use {assertEquals(good.length(),it.readBytes().size.toLong())}
         val bad=android.net.Uri.parse("content://${context.packageName}.updates/../profile")

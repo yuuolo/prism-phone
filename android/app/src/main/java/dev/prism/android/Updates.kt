@@ -95,6 +95,21 @@ object Updates {
     }
     fun apk(c: Context)=File(c.cacheDir,"updates/update.apk")
     fun downloaded(c: Context,u: AndroidUpdate)=prefs(c).getLong("downloaded",0)==u.code && apk(c).isFile
+    fun prepareInstall(c: Context,u: AndroidUpdate): File = synchronized(downloadLock) {
+        // A stale activity must not discard a newer downloaded update.
+        require(downloaded(c,u)) {"请重新下载更新"}
+        val target=apk(c)
+        try {
+            verifyDownloaded(c,target,u)
+            target
+        } catch(error: Exception) {
+            // Only our own cached APK is invalidated. The next explicit click
+            // downloads again instead of repeatedly offering the same bad file.
+            prefs(c).edit().remove("downloaded").apply()
+            target.delete()
+            throw error
+        }
+    }
     fun download(c: Context,u: AndroidUpdate): File = synchronized(downloadLock) {
         require(u.code>BuildConfig.VERSION_CODE && u.minSdk<=Build.VERSION.SDK_INT)
         // Validate metadata again even when supplied by a restored UI instance.

@@ -459,7 +459,8 @@ class MainActivity : Activity() {
                 }.show(); return
         }
         runTask {
-            Updates.verifyDownloaded(this,Updates.apk(this),update)
+            try {Updates.prepareInstall(this,update)}
+            catch(_:Exception) {throw UserMessage("已下载的安装包不可用，请重新下载更新")}
             main.post {if(!isDestroyed) runCatching {startActivity(Updates.installIntent(this))}.onFailure {message("无法打开安装器，请从发布页下载安装")}}
             "安装包已校验，请在系统安装器中确认"
         }
