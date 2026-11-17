@@ -7,9 +7,13 @@ The emulator's 10.0.2.2 host alias reaches this listener after LAN permission.
 import argparse
 import concurrent.futures
 import ipaddress
+import itertools
 import select
 import socket
 import threading
+
+
+connection_ids = itertools.count(1)
 
 
 def read_exact(sock, size):
@@ -23,9 +27,12 @@ def read_exact(sock, size):
 
 
 def serve(client, chain_first=False, acceptance_domains=False):
+    connection_id = next(connection_ids)
+    def log(message):
+        print(f"relay {connection_id}: {message}", flush=True)
     with client:
         client.settimeout(12)
-        print("test SOCKS client connected", flush=True)
+        log("client connected")
         try:
             if read_exact(client, 1) != b"\x05":
                 return
@@ -47,7 +54,7 @@ def serve(client, chain_first=False, acceptance_domains=False):
             allowed = ("127.0.0.1", 19090) if chain_first else ("1.1.1.1", 443)
             fixed_domain = acceptance_domains and not chain_first and host in ("one.one.one.one", "cloudflare-dns.com") and port == 443
             if (version, command, reserved) != (5, 1, 0) or not ((host, port) == allowed or fixed_domain):
-                print("relay target rejected by fixed allowlist", flush=True)
+                log("target rejected by fixed allowlist")
                 client.sendall(b"\x05\x02\x00\x01" + bytes(6))
                 return
             # Optional two-name acceptance aliases use the same fixed public
@@ -55,20 +62,30 @@ def serve(client, chain_first=False, acceptance_domains=False):
             destination = ("1.1.1.1",443) if fixed_domain else (host,port)
             with socket.create_connection(destination, timeout=10) as remote:
                 client.sendall(b"\x05\x00\x00\x01" + bytes(6))
-                print("forwarding to fixed second SOCKS hop" if chain_first else "forwarding TLS to fixed DoH upstream", flush=True)
+                # Only fixed allowlisted labels; never log arbitrary destinations.
+                label = "fixed second SOCKS hop" if chain_first else (host if fixed_domain else "fixed DoH upstream")
+                log("forwarding to " + label)
                 remote.settimeout(12)
+                uploaded = downloaded = 0
                 while True:
                     ready, _, _ = select.select([client, remote], [], [], 12)
                     if not ready:
+                        log(f"idle timeout; up={uploaded} down={downloaded}")
                         return
                     for source in ready:
                         data = source.recv(65536)
                         if not data:
+                            direction = "client" if source is client else "upstream"
+                            log(f"EOF from {direction}; up={uploaded} down={downloaded}")
                             return
+                        if source is client:
+                            uploaded += len(data)
+                        else:
+                            downloaded += len(data)
                         (remote if source is client else client).sendall(data)
         except (OSError, EOFError, UnicodeError) as error:
             # Failure remains visible to the app; never synthesize a DNS success.
-            print("relay failure: " + type(error).__name__, flush=True)
+            log("failure: " + type(error).__name__)
             return
 
 
