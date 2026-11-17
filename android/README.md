@@ -29,6 +29,8 @@
 
 ## 版本更新
 
+原证书的本机两阶段覆盖验收见 [签名升级验收](../docs/android-signed-upgrade.md)；普通 CI 不使用正式私钥，不发布本地验收包。
+
 新构建的更新元数据固定为 `https://github.com/yuuolo/prism-phone/releases/download/android-updates/android-update.json`；已安装 Beta.1 的旧仓库入口保留，通过同签名 APK 镜像提供兼容升级，见 [迁移说明](../docs/repository-migration.md)。不读取 GitHub 默认 latest 或桌面 `latest.json`。后台任务由 Android JobScheduler 安排，系统省电、强行停止、网络限制或通知权限会影响提醒时机；应用打开时还会按间隔检查。只检查和提醒，不自动下载安装。
 
 安装包需通过大小、SHA-256、包名、递增 versionCode 和当前安装签名校验，拒绝其他签名和损坏包。只允许官方仓库的安卓 APK 地址及 GitHub 官方下载重定向。安装必须由用户授权此来源并在系统安装器确认，不进行静默安装。

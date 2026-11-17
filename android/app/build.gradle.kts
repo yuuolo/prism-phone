@@ -9,7 +9,8 @@ android {
         targetSdk = 37
         versionCode = 3
         versionName = "0.2.0-beta.2"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = providers.gradleProperty("prismAcceptanceRunner")
+            .getOrElse("androidx.test.runner.AndroidJUnitRunner")
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     buildFeatures { buildConfig = true }
