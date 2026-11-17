@@ -327,8 +327,10 @@ impl Upstream {
     /// TCP / DoT / DoH over pooled keep-alive connections; a pooled
     /// connection that turns out to be dead is retried once on a new one.
     async fn exchange_stream(&self, query: &[u8]) -> io::Result<Vec<u8>> {
-        for _ in 0..2 {
-            let pooled = self.pool.lock().unwrap().pop();
+        for attempt in 0..2 {
+            // Several idle connections can die together. The recovery attempt
+            // must dial fresh, not consume another potentially dead pool entry.
+            let pooled = if attempt == 0 { self.pool.lock().unwrap().pop() } else { None };
             let fresh = pooled.is_none();
             let mut s = match pooled {
                 Some(s) => s,
@@ -444,6 +446,33 @@ mod tests {
         let answer = tokio::time::timeout(TIMEOUT, u.exchange_stream(&[0; 12])).await.unwrap().unwrap();
         assert_eq!(answer, vec![0; 12]);
         task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn dead_pool_entries_do_not_consume_fresh_connection_retry() {
+        for dead_count in [2, POOL] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let u = up(&format!("tcp://{}", listener.local_addr().unwrap()));
+            for _ in 0..dead_count {
+                let (stale, peer) = tokio::io::duplex(4096);
+                drop(peer);
+                u.pool.lock().unwrap().push(Box::new(stale));
+            }
+            let task = tokio::spawn(async move {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let len = socket.read_u16().await.unwrap();
+                let mut request = vec![0; len as usize];
+                socket.read_exact(&mut request).await.unwrap();
+                socket.write_u16(len).await.unwrap();
+                socket.write_all(&request).await.unwrap();
+            });
+            let answer = tokio::time::timeout(TIMEOUT, u.exchange_stream(&[0; 12])).await.unwrap();
+            assert!(answer.is_ok(), "{dead_count} dead pooled sockets must not prevent a fresh dial: {answer:?}");
+            assert_eq!(answer.unwrap(), vec![0; 12]);
+            task.await.unwrap();
+            // Replace only the failed entry; other pooled streams are untouched.
+            assert_eq!(u.pool.lock().unwrap().len(), dead_count);
+        }
     }
 
     #[tokio::test]
