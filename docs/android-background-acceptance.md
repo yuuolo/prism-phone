@@ -22,6 +22,10 @@
 
 修复提交 `f4e12f5` 的[完整 CI 44145489978](https://github.com/yuuolo/prism-phone/actions/runs/44145489978)全部通过：新增确定性池恢复回归在 Linux 执行通过，手机 Rust 32 项、共享内核 101 项、构建/Lint/单元测试及双系统各 18 项与独立 180 秒 Doze 均通过。两份三阶段 HTTP 200、进程/VPN 身份及断开对照报告已逐字段核对；宿主 Windows 的共享内核 105 项也通过。上述证明该池恢复缺陷已修正，不能据此证明所有历史 TLS EOF 同源或真实网络永不失败。
 
+本机新 JNI 的首轮并行完整回归仍出现 TLS 关闭/超时，以及一次 UDP 详情快照未找到预期会话；这些失败没有因后续通过而删除。宿主正常 TLS 对照、API 26 两项定向复验，以及后续串行双系统各 18 项与独立 180 秒 Doze 均通过，最后两份报告已逐字段核对。失败根因未全部证明同源；测试增加 TLS 前后实际重建计数和 UDP 失败快照诊断，未放宽断言或新增应用层验收重试。本机代理夹具及 adb 转发在验收结束后清理。
+
+增强失败诊断的 `4bd3aa1` 对应[完整 CI 44147218755](https://github.com/yuuolo/prism-phone/actions/runs/44147218755)再次全部通过，仍包含双系统各 18 项与各自独立 180 秒 Doze；两个原始报告及确定性池恢复回归已核对。至此该修复有两轮完整 CI 和本地串行双系统通过证据，未将历史失败或真机/实际节点验收缺口移除。
+
 `prism-acceptance-client` 仅由 Cargo 的 `acceptance-tools` feature 显式构建，作为独立测试制品，不进入 APK。专用 seed APK 与默认 JUnit APK 分开保存，默认回归仍执行原有 18 项。CI 在两套系统的完整回归后分别执行本项验收。
 
 API 26 的平台 `uiautomator dump` 会等待一秒界面静止，动态仪表盘可能持续触发 `could not get idle state`。验收改用独立 shell 进程的一次性 `PrismUiSnapshot`，按 [AOSP shell wrapper](https://android.googlesource.com/platform/frameworks/testing/+/89f6117/uiautomator/library/src/com/android/uiautomator/core/UiAutomationShellWrapper.java) 的连接方式读取当前无障碍控件，不等待界面静止。每次快照均退出并断开，不在待机期间持有控制进程；只点击实际读取到的本应用启用按钮。反射仅存在于外部测试工具，不进入 APK，也不修改生产刷新频率。失败时在清理前保存系统日志、网络和 Activity 状态。
