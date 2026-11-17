@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--expected-avd", required=True, choices=["PrismPhoneCI", "PrismPhoneApi26"])
     parser.add_argument("--seed-apk", required=True)
     parser.add_argument("--client", required=True)
+    parser.add_argument("--ui-tool", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--idle-seconds", type=int, default=180)
     args = parser.parse_args()
@@ -79,24 +80,23 @@ def main():
         return result
 
     def ui():
-        # Fresh CI images need not have a Download directory. Use the mounted
-        # shared-storage root, which exists on both supported owned images.
-        remote = "/sdcard/prism-background.xml"
+        # A live dashboard changes every second. The platform dump command's
+        # one-second idle requirement is inappropriate for this screen.
         last_dump = ""
         for _ in range(3):
-            shell("rm", "-f", remote)
-            dumped = subprocess.run([args.adb,"-s",args.serial,"shell","uiautomator","dump",remote],capture_output=True,timeout=20)
-            last_dump = (dumped.stdout + dumped.stderr).decode("utf-8","replace").strip()
-            raw = adb("exec-out", "cat", remote, check=False)
+            dumped = subprocess.run([args.adb,"-s",args.serial,"shell","env","CLASSPATH=/data/local/tmp/prism-ui-snapshot.jar","app_process","/system/bin","PrismUiSnapshot"],capture_output=True,timeout=10)
+            last_dump = dumped.stderr.decode("utf-8","replace").strip()
             try:
-                return ET.fromstring(raw)
+                if dumped.returncode:
+                    raise ET.ParseError("snapshot process failed")
+                return ET.fromstring(dumped.stdout)
             except ET.ParseError:
                 time.sleep(.5)
         raise RuntimeError("No current UI hierarchy: " + last_dump[:350])
 
     def click_button(text):
         for node in ui().iter("node"):
-            if node.get("text") == text and node.get("class") == "android.widget.Button" and node.get("enabled") == "true":
+            if node.get("text") == text and node.get("package") == "dev.prism.android" and node.get("class") == "android.widget.Button" and node.get("enabled") == "true":
                 points = list(map(int, re.findall(r"[0-9]+", node.get("bounds", ""))))
                 if len(points) == 4:
                     shell("input", "tap", str((points[0] + points[2]) // 2), str((points[1] + points[3]) // 2))
@@ -109,7 +109,7 @@ def main():
     if idle_state()["forced"] or "UPDATES STOPPED" in shell("dumpsys", "battery"):
         raise RuntimeError("A pre-existing power override must be restored by its owner first")
     original_awake = "mWakefulness=Awake" in shell("dumpsys", "power")
-    for path in [args.seed_apk, args.client]:
+    for path in [args.seed_apk, args.client, args.ui_tool]:
         if not Path(path).is_file():
             raise RuntimeError("Missing acceptance input")
 
@@ -129,6 +129,7 @@ def main():
         if int(shell("getprop", "ro.build.version.sdk")) >= 37:
             shell("pm", "grant", "dev.prism.android", "android.permission.ACCESS_LOCAL_NETWORK")
         adb("push", args.client, "/data/local/tmp/prism-acceptance-client")
+        adb("push", args.ui_tool, "/data/local/tmp/prism-ui-snapshot.jar")
         shell("chmod", "755", "/data/local/tmp/prism-acceptance-client")
         shell("input", "keyevent", "224")
         shell("wm", "dismiss-keyguard", check=False)
@@ -194,6 +195,18 @@ def main():
         succeeded = True
     except Exception as error:
         report["failure"] = {"phase": phase, "type": type(error).__name__, "message": str(error)[:500]}
+        # Capture before force-stop/power cleanup destroys the failing state.
+        # This script already restricts all operations to disposable owned AVDs.
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        for label, command in [("logcat", ["logcat", "-d", "-t", "2000"]),
+                               ("connectivity", ["shell", "dumpsys", "connectivity"]),
+                               ("activity", ["shell", "dumpsys", "activity", "top"])]:
+            try:
+                captured = adb(*command, check=False, timeout=10)
+                output.with_name(output.stem + "-failure-" + label + ".txt").write_text(captured, encoding="utf-8")
+            except Exception as capture_error:
+                report.setdefault("diagnosticErrors", []).append(type(capture_error).__name__)
     finally:
         if power_changed:
             shell("dumpsys", "deviceidle", "unforce", check=False)

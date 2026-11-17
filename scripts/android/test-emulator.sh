@@ -21,5 +21,6 @@ if [ -n "${2:-}" ]; then
   python3 -u scripts/android/test-background.py \
     --adb "$(command -v adb)" --serial "$(adb get-serialno)" --expected-avd "$2" \
     --seed-apk background-tools/seed.apk --client background-tools/prism-acceptance-client \
+    --ui-tool background-tools/prism-ui-snapshot.jar \
     --output emulator-results/background.json --idle-seconds 180 | tee emulator-results/background.txt
 fi

@@ -16,4 +16,6 @@
 
 `prism-acceptance-client` 仅由 Cargo 的 `acceptance-tools` feature 显式构建，作为独立测试制品，不进入 APK。专用 seed APK 与默认 JUnit APK 分开保存，默认回归仍执行原有 18 项。CI 在两套系统的完整回归后分别执行本项验收。
 
+API 26 的平台 `uiautomator dump` 会等待一秒界面静止，动态仪表盘可能持续触发 `could not get idle state`。验收改用独立 shell 进程的一次性 `PrismUiSnapshot`，按 [AOSP shell wrapper](https://android.googlesource.com/platform/frameworks/testing/+/89f6117/uiautomator/library/src/com/android/uiautomator/core/UiAutomationShellWrapper.java) 的连接方式读取当前无障碍控件，不等待界面静止。每次快照均退出并断开，不在待机期间持有控制进程；只点击实际读取到的本应用启用按钮。反射仅存在于外部测试工具，不进入 APK，也不修改生产刷新频率。失败时在清理前保存系统日志、网络和 Activity 状态。
+
 这证明模拟器 Doze 策略下的短时后台存活、冷 DNS、TUN/TLS、恢复及手动断开行为。PSS 仅记录静置前后的样本，不能据此宣称无泄漏、低耗电或长时稳定。模拟器强制 Doze 不等于真机 CPU 深睡，也不替代 ARM64 真机长时锁屏、厂商省电、无线切换、真实节点账号或多设备局域网验收。正式包版本、签名、升级通道与平台暂停范围均不改变。

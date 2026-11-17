@@ -47,6 +47,7 @@ def serve(client, chain_first=False, acceptance_domains=False):
             allowed = ("127.0.0.1", 19090) if chain_first else ("1.1.1.1", 443)
             fixed_domain = acceptance_domains and not chain_first and host in ("one.one.one.one", "cloudflare-dns.com") and port == 443
             if (version, command, reserved) != (5, 1, 0) or not ((host, port) == allowed or fixed_domain):
+                print("relay target rejected by fixed allowlist", flush=True)
                 client.sendall(b"\x05\x02\x00\x01" + bytes(6))
                 return
             # Optional two-name acceptance aliases use the same fixed public
@@ -96,6 +97,7 @@ def main():
             if slots.acquire(blocking=False):
                 pool.submit(bounded_serve, client)
             else:
+                print("relay capacity exhausted", flush=True)
                 client.close()
 
 

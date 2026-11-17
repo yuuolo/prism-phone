@@ -64,6 +64,7 @@ jobs:
           export RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384'
           cargo ndk -t x86_64 --platform 26 build --release -p prism-android --features acceptance-tools --bin prism-acceptance-client --locked
           mkdir -p background-tools
+          bash scripts/android/build-ui-snapshot.sh
           cp target/x86_64-linux-android/release/prism-acceptance-client background-tools/
           bash android/gradlew -p android assembleDebugAndroidTest -PprismAcceptanceRunner=dev.prism.android.BackgroundSeedInstrumentation
           cp android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk background-tools/seed.apk
