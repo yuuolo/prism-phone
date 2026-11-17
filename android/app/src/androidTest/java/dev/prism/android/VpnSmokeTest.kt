@@ -216,6 +216,7 @@ class VpnSmokeTest {
         device.findObject(By.desc("检测类型")).click()
         assertTrue(device.wait(Until.hasObject(By.text("TCP 连通与延迟")),3000))
         device.findObject(By.text("TCP 连通与延迟")).click()
+        assertTrue("TCP fields did not appear after selecting the type",device.wait(Until.hasObject(By.desc("检测端口")),5000))
         device.findObject(By.desc("检测目标")).text="203.0.113.9"
         device.findObject(By.desc("检测端口")).text="80"
         device.findObject(By.text("开始检测")).click()

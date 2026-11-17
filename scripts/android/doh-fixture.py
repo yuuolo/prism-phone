@@ -22,7 +22,7 @@ def read_exact(sock, size):
     return bytes(data)
 
 
-def serve(client, chain_first=False):
+def serve(client, chain_first=False, acceptance_domains=False):
     with client:
         client.settimeout(12)
         print("test SOCKS client connected", flush=True)
@@ -45,10 +45,14 @@ def serve(client, chain_first=False):
                 return
             port = int.from_bytes(read_exact(client, 2), "big")
             allowed = ("127.0.0.1", 19090) if chain_first else ("1.1.1.1", 443)
-            if (version, command, reserved, host, port) != (5, 1, 0, *allowed):
+            fixed_domain = acceptance_domains and not chain_first and host in ("one.one.one.one", "cloudflare-dns.com") and port == 443
+            if (version, command, reserved) != (5, 1, 0) or not ((host, port) == allowed or fixed_domain):
                 client.sendall(b"\x05\x02\x00\x01" + bytes(6))
                 return
-            with socket.create_connection((host, port), timeout=10) as remote:
+            # Optional two-name acceptance aliases use the same fixed public
+            # TLS service. Never resolve/forward an arbitrary requested host.
+            destination = ("1.1.1.1",443) if fixed_domain else (host,port)
+            with socket.create_connection(destination, timeout=10) as remote:
                 client.sendall(b"\x05\x00\x00\x01" + bytes(6))
                 print("forwarding to fixed second SOCKS hop" if chain_first else "forwarding TLS to fixed DoH upstream", flush=True)
                 remote.settimeout(12)
@@ -71,6 +75,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int)
     parser.add_argument("--chain-first", action="store_true", help="Only forward to the fixed loopback second hop; never arbitrary targets")
+    parser.add_argument("--acceptance-domains", action="store_true", help="Permit the two fixed public TLS names for cold native DNS acceptance")
     args = parser.parse_args()
     port = args.port if args.port is not None else (19092 if args.chain_first else 19090)
     if not 1024 <= port <= 65535:
@@ -78,7 +83,7 @@ def main():
     slots = threading.BoundedSemaphore(8)
     def bounded_serve(client):
         try:
-            serve(client, args.chain_first)
+            serve(client, args.chain_first, args.acceptance_domains)
         finally:
             slots.release()
     with socket.socket() as listener, concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:

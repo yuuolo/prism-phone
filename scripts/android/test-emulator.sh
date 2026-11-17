@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p emulator-results
-python3 -u scripts/android/doh-fixture.py > emulator-results/doh-fixture.txt 2>&1 &
+python3 -u scripts/android/doh-fixture.py --acceptance-domains > emulator-results/doh-fixture.txt 2>&1 &
 doh_pid=$!
 python3 -u scripts/android/doh-fixture.py --chain-first > emulator-results/doh-chain-first.txt 2>&1 &
 chain_pid=$!
@@ -17,3 +17,9 @@ adb logcat -d > emulator-results/logcat.txt
 adb exec-out screencap -p > emulator-results/screen.png
 adb pull /sdcard/Android/data/dev.prism.android/files/screenshots emulator-results/screenshots || true
 grep -Eq '^OK \([0-9]+ tests?\)' emulator-results/instrumentation.txt
+if [ -n "${2:-}" ]; then
+  python3 -u scripts/android/test-background.py \
+    --adb "$(command -v adb)" --serial "$(adb get-serialno)" --expected-avd "$2" \
+    --seed-apk background-tools/seed.apk --client background-tools/prism-acceptance-client \
+    --output emulator-results/background.json --idle-seconds 180 | tee emulator-results/background.txt
+fi

@@ -30,6 +30,18 @@ class NetworkRecoveryTest {
         fail("Timed out: $description")
     }
     private fun status()=JSONObject(CoreBridge.status())
+    private fun awaitSettledRecovery() {
+        // One OS switch emits several callbacks. A first rebuild is evidence
+        // of recovery, not evidence that the trailing three-second batch ended.
+        // Do not send/retry application traffic while that batch closes sockets.
+        var count=status().getLong("networkRebuilds")
+        var since=System.currentTimeMillis()
+        waitFor("network callback batch settled",20000) {
+            val current=status().getLong("networkRebuilds")
+            if(current!=count){count=current;since=System.currentTimeMillis()}
+            System.currentTimeMillis()-since>=4000
+        }
+    }
     private fun dns(host:String) {
         var result=JSONObject();repeat(3){if(!result.has("addresses"))result=JSONObject(CoreBridge.diagnose(JSONObject().put("kind","dns").put("host",host).toString()))}
         assertTrue("Real chained DoH failed: $result",result.has("addresses"));assertEquals("Recovery exit",result.getString("nodeName"))
@@ -93,6 +105,7 @@ class NetworkRecoveryTest {
             before=status().getLong("networkRebuilds");wifi(false)
             waitFor("cellular default without Wi-Fi",30000){!physical(NetworkCapabilities.TRANSPORT_WIFI) && physical(NetworkCapabilities.TRANSPORT_CELLULAR) && physicalDefaultUses(NetworkCapabilities.TRANSPORT_CELLULAR)}
             waitFor("OS callback rebuild on cellular"){status().getLong("networkRebuilds")>before}
+            awaitSettledRecovery()
             // Check preservation BEFORE new traffic could hide a counter reset.
             assertTrue(status().getLong("upload")>=upload);assertTrue(status().getLong("download")>=download)
             dns("example.net");applicationTls(port);assertEquals(session,status().getString("sessionId"))
@@ -101,6 +114,7 @@ class NetworkRecoveryTest {
             before=status().getLong("networkRebuilds");wifi(true)
             waitFor("Wi-Fi default returns",30000){physical(NetworkCapabilities.TRANSPORT_WIFI) && physicalDefaultUses(NetworkCapabilities.TRANSPORT_WIFI)}
             waitFor("OS callback rebuild on Wi-Fi"){status().getLong("networkRebuilds")>before}
+            awaitSettledRecovery()
             assertTrue(status().getLong("upload")>=cellUpload);assertTrue(status().getLong("download")>=cellDownload)
             dns("www.iana.org");applicationTls(port);assertEquals(session,status().getString("sessionId"))
             val buckets=JSONObject(CoreBridge.traffic()).getJSONArray("buckets")

@@ -43,7 +43,6 @@ jobs:
           path: android/app/src/main/jniLibs/
           key: android-jni-ndk28-api26-${{ steps.compiler.outputs.identity }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'crates/prism-core/**', 'crates/prism-android/**', 'scripts/android/build-native.sh') }}
       - name: Native build tooling
-        if: steps.native.outputs.cache-hit != 'true'
         run: cargo install cargo-ndk --version 4.0.0 --locked
       - name: Shared mobile policy tests
         run: |
@@ -59,6 +58,20 @@ jobs:
           bash android/gradlew -p android testDebugUnitTest assembleDebug --stacktrace
           bash scripts/android/build-update-fixtures.sh
           bash android/gradlew -p android assembleDebugAndroidTest assembleRelease lintDebug lintRelease --stacktrace
+      - name: Build independent background acceptance tools
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
+          export RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384'
+          cargo ndk -t x86_64 --platform 26 build --release -p prism-android --features acceptance-tools --bin prism-acceptance-client --locked
+          mkdir -p background-tools
+          cp target/x86_64-linux-android/release/prism-acceptance-client background-tools/
+          bash android/gradlew -p android assembleDebugAndroidTest -PprismAcceptanceRunner=dev.prism.android.BackgroundSeedInstrumentation
+          cp android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk background-tools/seed.apk
+          bash android/gradlew -p android assembleDebugAndroidTest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prism-android-background-tools
+          path: background-tools/
       - name: Release has no network-switch test permissions
         run: |
           "$ANDROID_HOME/build-tools/37.0.0/aapt2" dump permissions android/app/build/outputs/apk/release/app-release-unsigned.apk > release-permissions.txt
@@ -91,10 +104,12 @@ jobs:
             image: '37.2'
             target: google_apis_ps16k
             label: android17-16k
+            avd: PrismPhoneCI
           - api: '26'
             image: '26'
             target: google_apis
             label: android8
+            avd: PrismPhoneApi26
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -109,6 +124,10 @@ jobs:
         run: |
           echo "ANDROID_HOME=$RUNNER_TEMP/prism-android-sdk" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$RUNNER_TEMP/prism-android-sdk" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          name: prism-android-background-tools
+          path: background-tools
       - name: KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -120,8 +139,9 @@ jobs:
           system-image-api-level: ${{ matrix.image }}
           arch: x86_64
           target: ${{ matrix.target }}
+          avd-name: ${{ matrix.avd }}
           disable-animations: true
-          script: bash scripts/android/test-emulator.sh apk
+          script: bash scripts/android/test-emulator.sh apk ${{ matrix.avd }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

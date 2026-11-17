@@ -7,6 +7,14 @@ license.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+acceptance-tools = []
+
+[[bin]]
+name = "prism-acceptance-client"
+path = "tests/tools/acceptance_client.rs"
+required-features = ["acceptance-tools"]
+
 [dependencies]
 prism-core = { path = "../prism-core" }
 anyhow = "1"

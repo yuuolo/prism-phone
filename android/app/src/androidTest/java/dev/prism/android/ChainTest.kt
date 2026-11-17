@@ -97,7 +97,7 @@ class ChainTest {
     private fun profile(first:Int,last:Int,kind:String="socks5")="proxies: [{name: FirstHop, type: $kind, server: 127.0.0.1, port: $first}, {name: ExitHop, type: socks5, server: 127.0.0.1, port: $last}]"
     private fun plan(ids:List<String>,udp:Boolean=true)=JSONObject().put("enabled",true).put("udpEnabled",udp).put("hopIds",JSONArray(ids))
     private fun probe(host:String)=JSONObject(CoreBridge.diagnose(JSONObject().put("kind","tcp").put("host",host).put("port",80).toString()))
-    private fun http() {Socket().use {s ->s.soTimeout=10000;s.connect(InetSocketAddress("203.0.113.51",80),5000);s.getOutputStream().write("GET / HTTP/1.1\r\nHost: chain.android.invalid\r\nConnection: close\r\n\r\n".toByteArray());assertTrue(s.getInputStream().readBytes().toString(Charsets.US_ASCII).endsWith("OK"))}}
+    private fun http() {Socket().use {s ->s.soTimeout=10000;s.connect(InetSocketAddress("203.0.113.51",80),5000);s.getOutputStream().write("GET / HTTP/1.1\r\nHost: chain.android.invalid\r\nConnection: close\r\n\r\n".toByteArray());val response=s.getInputStream().readBytes().toString(Charsets.US_ASCII);assertTrue("Chain HTTP response (${response.length} bytes): ${response.take(160)}; status=${CoreBridge.status()}",response.endsWith("OK"))}}
     @Test fun orderedChainRealTcpUdpMetadataFailureAndCompatibleSettings() {
         context.getSharedPreferences("prism-mobile",0).edit().clear().commit();Updates.setEnabled(context,false);shell("appops set ${context.packageName} ACTIVATE_VPN allow")
         VpnSmokeTest.Socks().use {last ->Forwarder(setOf(last.listener.localPort)).use {first ->
