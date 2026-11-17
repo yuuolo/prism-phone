@@ -451,7 +451,9 @@ class MainActivity : Activity() {
         }
     }
     private fun installUpdate(update: AndroidUpdate) {
-        if(!packageManager.canRequestPackageInstalls()) {
+        // On newer systems the installer owns per-install source consent;
+        // a false preflight result must not trap "Ask every time" in Settings.
+        if(Build.VERSION.SDK_INT<37 && !packageManager.canRequestPackageInstalls()) {
             AlertDialog.Builder(this).setTitle("允许 Prism 安装更新")
                 .setMessage("请在系统页面允许此来源安装应用，然后返回更新页继续安装。系统仍会要求你确认安装。")
                 .setNegativeButton("稍后",null).setPositiveButton("前往设置") {_,_ ->

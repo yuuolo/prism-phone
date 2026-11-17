@@ -51,7 +51,8 @@ class SignedUpgradeInstrumentation:Instrumentation() {
                     check(proof.edit().remove("installerCode").putInt("uid",context.applicationInfo.uid).putString("fingerprint",fingerprint(store.load())).commit())
                 }
                 "stage-install"->{
-                    check(installed.versionCode==3 && proof.getInt("uid",-1)==context.applicationInfo.uid)
+                    check(installed.versionCode>=3 && proof.getInt("uid",-1)==context.applicationInfo.uid)
+                    check(fingerprint(store.load())==proof.getString("fingerprint",null))
                     check(BuildConfig.VERSION_CODE>installed.versionCode) {"Build the isolated acceptance source with a higher version"}
                     val candidate=Updates.apk(context).apply {parentFile!!.mkdirs()}
                     this.context.assets.open("installer-candidate.apk").use {input ->candidate.outputStream().use {input.copyTo(it)}}

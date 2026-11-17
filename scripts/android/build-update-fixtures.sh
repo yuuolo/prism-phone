@@ -11,6 +11,7 @@ future_code=$((current_code + 1))
 cat > "$scratch/AndroidManifest.xml" <<XML
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.prism.android" android:versionCode="$future_code" android:versionName="0.2.1-test">
 <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="37" />
+<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 <application android:label="Update verification fixture" android:hasCode="false" />
 </manifest>
 XML
