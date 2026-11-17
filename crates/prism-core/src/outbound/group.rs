@@ -125,7 +125,7 @@ impl ProxyGroup {
     /// Tests every member and, for url-test, switches to the fastest one when
     /// it beats the current member by more than `tolerance`.
     pub async fn health_check(&self) {
-        let Some(reg) = self.reg.get().cloned() else { return };
+        let Some(reg) = self.reg.get() else { return };
         let timeout = Duration::from_secs(5);
         let tests = self.cfg.proxies.iter().map(|m| {
             let reg = reg.clone();
@@ -182,7 +182,7 @@ impl Outbound for ProxyGroup {
         self.cfg.kind.api_type()
     }
     fn udp(&self) -> bool {
-        true
+        !self.cfg.block_udp
     }
     async fn connect(&self, target: &Address) -> io::Result<BoxedStream> {
         if self.cfg.kind == GroupKind::Relay {
@@ -193,6 +193,7 @@ impl Outbound for ProxyGroup {
         out.connect(target).await
     }
     async fn connect_udp(&self, target: &Address) -> io::Result<UdpPipe> {
+        if self.cfg.block_udp {return Err(io::Error::new(io::ErrorKind::Unsupported,"UDP disabled for this mobile chain"));}
         if self.cfg.kind == GroupKind::Relay {
             return self.relay(target)?.connect_udp(target).await;
         }

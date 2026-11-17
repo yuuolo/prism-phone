@@ -75,10 +75,29 @@ impl LocalProxy {
         };
         let mut bound = None;
         let mut last_error = None;
+        let mut seed = 0u32;
         // Port 0 must find a port available for BOTH transports; platforms can
         // reserve different TCP/UDP ephemeral ranges. Explicit ports never change.
-        for _ in 0..if port == 0 { 16 } else { 1 } {
-            let tcp = prism_core::net::mobile_tcp_listener(SocketAddr::from((ip, port))).await?;
+        for attempt in 0..if port == 0 { 32 } else { 1 } {
+            // Windows can reserve a long UDP range while TCP port-0 allocation
+            // walks that same range. Spread retries instead of repeating nearby ports.
+            let candidate = if port == 0 && attempt > 0 {
+                1024 + ((seed + attempt * 9973) % 64512) as u16
+            } else {
+                port
+            };
+            let tcp = match prism_core::net::mobile_tcp_listener(SocketAddr::from((ip, candidate)))
+                .await
+            {
+                Ok(tcp) => tcp,
+                Err(e) => {
+                    last_error = Some(e);
+                    continue;
+                }
+            };
+            if attempt == 0 {
+                seed = tcp.local_addr()?.port() as u32;
+            }
             match prism_core::net::mobile_udp_listener(tcp.local_addr()?).await {
                 Ok(udp) => {
                     bound = Some((tcp, udp));

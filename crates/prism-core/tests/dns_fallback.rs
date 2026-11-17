@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use prism_core::config::{DnsConfig, FallbackFilter};
 use prism_core::dns::{self, wire};
@@ -56,7 +56,7 @@ async fn uses_fallback_for_filtered_answers() {
         fallback_filter: FallbackFilter { geoip: false, geoip_code: String::new(), ipcidr: vec!["203.0.113.0/24".into()], domain: vec!["+.forced.test".into()] },
         ..Default::default()
     };
-    let cell = Arc::new(OnceLock::new());
+    let cell = Default::default();
     let (r, warnings) = dns::build(&cfg, &[], std::path::Path::new("."), cell, &Mutex::new(None));
     assert!(warnings.is_empty(), "{warnings:?}");
     let r = r.unwrap();
@@ -89,7 +89,7 @@ async fn geoip_filter() {
         fallback_filter: FallbackFilter::default(),
         ..Default::default()
     };
-    let (r, warnings) = dns::build(&cfg, &[], std::path::Path::new(&home), Arc::new(OnceLock::new()), &Mutex::new(None));
+    let (r, warnings) = dns::build(&cfg, &[], std::path::Path::new(&home), Default::default(), &Mutex::new(None));
     assert!(warnings.is_empty(), "{warnings:?}");
     let r = r.unwrap();
     assert_eq!(ask(&r, "cn.test").await, ["223.5.5.5".parse::<IpAddr>().unwrap()]);
@@ -109,7 +109,7 @@ async fn quic_and_h3_upstreams_live() {
             nameserver: vec![server.to_string()],
             ..Default::default()
         };
-        let (r, warnings) = dns::build(&cfg, &[], std::path::Path::new("."), Arc::new(OnceLock::new()), &Mutex::new(None));
+        let (r, warnings) = dns::build(&cfg, &[], std::path::Path::new("."), Default::default(), &Mutex::new(None));
         assert!(warnings.is_empty(), "{server}: {warnings:?}");
         let r = r.unwrap();
         for name in ["www.baidu.com", "www.example.com", "github.com"] {
@@ -125,7 +125,7 @@ async fn quic_and_h3_upstreams_live() {
 async fn upstream_error_detail() {
     let Ok(server) = std::env::var("PRISM_DNS_DEBUG") else { return };
     let boot = Arc::new(vec!["223.5.5.5:53".parse().unwrap()]);
-    let u = dns::upstream::Upstream::parse(&server, boot, Arc::new(OnceLock::new())).unwrap();
+    let u = dns::upstream::Upstream::parse(&server, boot, Default::default()).unwrap();
     let q = wire::query(9, "www.example.com", wire::TYPE_A);
     match u.exchange(&q).await {
         Ok(r) => println!("rcode {} answers {:?}", wire::rcode(&r), wire::answers(&r)),

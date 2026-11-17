@@ -1,5 +1,5 @@
 //! Routing regression: target DNS must not use node bootstrap or fall back DIRECT.
-use std::{collections::HashMap, io, sync::{Arc, Mutex, OnceLock}};
+use std::{collections::HashMap, io, sync::{Arc, Mutex}};
 use async_trait::async_trait;
 use prism_core::{common::{Address, BoxedStream}, config::{DnsConfig, GroupConfig, GroupKind, ProxyConfig, Mode}, dns::{self, wire}, outbound::{self, Outbound, Registry, RegistryCell, ProxyGroup}};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -40,15 +40,15 @@ async fn target_and_bootstrap_are_separate_and_direct_selection_fails_closed() {
         }
     });
     let proxy_hits = Arc::new(Mutex::new(Vec::new()));
-    let cell: RegistryCell = Arc::new(OnceLock::new());
+    let cell: RegistryCell = Default::default();
     let group = Arc::new(ProxyGroup::new(GroupConfig::new("G", GroupKind::Select, vec!["test-proxy".into(), "DIRECT".into()]), cell.clone()));
     let mut map: HashMap<String, Arc<dyn Outbound>> = HashMap::new();
     map.insert("test-proxy".into(), Arc::new(Proxy(proxy_hits.clone())));
     map.insert("G".into(), group.clone());
     map.insert("DIRECT".into(), Arc::new(outbound::basic::Direct));
     let reg = Arc::new(Registry { map, order: vec![], delays: Default::default(), unified_delay: false,
-        configs: HashMap::from([("test-proxy".into(), ProxyConfig::default())]) });
-    assert!(cell.set(reg).is_ok());
+        configs: HashMap::from([("test-proxy".into(), ProxyConfig::default()),("DIRECT".into(),ProxyConfig::default())]) });
+    assert!(cell.set(reg.clone()).is_ok());
     let cfg = DnsConfig { enable: true, nameserver: vec!["tcp://192.0.2.53#G&proxy-only=true".into()],
         proxy_server_nameserver: vec![bootstrap], ..Default::default() };
     let (r, warnings) = dns::build(&cfg, &[], std::path::Path::new("."), cell, &Mutex::new(None));

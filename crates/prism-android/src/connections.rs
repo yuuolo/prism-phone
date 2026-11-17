@@ -22,6 +22,7 @@ pub struct Row {
     pub rule: String,
     pub rule_payload: String,
     pub chains: Vec<String>,
+    pub chain_ids: Vec<String>,
     pub upload: u64,
     pub download: u64,
     pub started_at: i64,
@@ -58,14 +59,21 @@ impl Query {
         let total = rows.len();
         let search = self.search.trim().to_lowercase();
         rows.retain(|r| {
-            let direct = r.chains.first().is_some_and(|c| c == "DIRECT");
+            let direct = r
+                .chain_ids
+                .first()
+                .or_else(|| r.chains.first())
+                .is_some_and(|c| c == "DIRECT");
             (self.network.is_empty() || self.network == r.network)
                 && (self.route.is_empty() || (self.route == "direct") == direct)
                 && (search.is_empty()
                     || [&r.destination, &r.rule, &r.rule_payload]
                         .iter()
                         .any(|s| s.to_lowercase().contains(&search))
-                    || r.chains.iter().any(|s| s.to_lowercase().contains(&search)))
+                    || r.chains
+                        .iter()
+                        .chain(&r.chain_ids)
+                        .any(|s| s.to_lowercase().contains(&search)))
         });
         rows.sort_by(|a, b| {
             match self.sort.as_str() {
@@ -89,6 +97,14 @@ impl Query {
         }
     }
     pub fn snapshot(&self, stats: &Stats, session_id: String) -> Page {
+        self.snapshot_with_labels(stats, session_id, &Default::default())
+    }
+    pub fn snapshot_with_labels(
+        &self,
+        stats: &Stats,
+        session_id: String,
+        labels: &std::collections::HashMap<String, String>,
+    ) -> Page {
         // Clone handles under the lock; formatting and sorting do not block relays.
         let conns: Vec<_> = stats
             .conns
@@ -105,7 +121,12 @@ impl Query {
                 network: c.meta.network.as_str().into(),
                 rule: c.rule.clone(),
                 rule_payload: c.rule_payload.clone(),
-                chains: c.chains.clone(),
+                chains: c
+                    .chains
+                    .iter()
+                    .map(|name| labels.get(name).cloned().unwrap_or_else(|| name.clone()))
+                    .collect(),
+                chain_ids: c.chains.clone(),
                 upload: c.upload.load(Ordering::Relaxed),
                 download: c.download.load(Ordering::Relaxed),
                 started_at: c.start.timestamp_millis(),
@@ -131,6 +152,7 @@ mod tests {
             rule: "DomainSuffix".into(),
             rule_payload: "example".into(),
             chains: vec![if i % 3 == 0 { "DIRECT" } else { "手机节点" }.into()],
+            chain_ids: vec![],
             upload: i as u64,
             download: i as u64,
             started_at: i as i64,
@@ -154,6 +176,37 @@ mod tests {
         );
         let q = Query::parse(r#"{"search":"手机节点"}"#).unwrap();
         assert_eq!(q.page((0..12).map(row).collect(), "s".into()).matched, 8);
+    }
+    #[test]
+    fn display_labels_remain_searchable_without_changing_real_route_classification() {
+        let mut proxy = row(1);
+        proxy.chains = vec!["DIRECT".into(), "前置代理".into()];
+        proxy.chain_ids = vec![
+            "链节点.exit-id".into(),
+            "链节点.first-id".into(),
+            "手机节点".into(),
+        ];
+        assert_eq!(
+            Query::parse(r#"{"route":"proxy","search":"前置代理"}"#)
+                .unwrap()
+                .page(vec![proxy.clone()], "s".into())
+                .matched,
+            1
+        );
+        assert_eq!(
+            Query::parse(r#"{"route":"proxy","search":"exit-id"}"#)
+                .unwrap()
+                .page(vec![proxy.clone()], "s".into())
+                .matched,
+            1
+        );
+        assert_eq!(
+            Query::parse(r#"{"route":"direct"}"#)
+                .unwrap()
+                .page(vec![proxy], "s".into())
+                .matched,
+            0
+        );
     }
     #[test]
     fn bounds_pages_and_recovers_after_connections_disappear() {

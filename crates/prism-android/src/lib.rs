@@ -1,6 +1,7 @@
 //! Mobile-only policy and JNI boundary. No desktop services or API listener.
 pub mod adblock;
 pub mod automatic;
+pub mod chain;
 pub mod connections;
 pub mod diagnostics;
 #[cfg(target_os = "android")]

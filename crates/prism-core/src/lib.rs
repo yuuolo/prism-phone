@@ -32,7 +32,7 @@ pub mod tunnel;
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -166,7 +166,7 @@ pub async fn build(mut profile: Profile, home: &Path, env: &BuildEnv) -> Result<
     }
 
     // ---- protocol outbounds; drop the ones prism-core can't speak
-    let cell: outbound::RegistryCell = Arc::new(OnceLock::new());
+    let cell: outbound::RegistryCell = Default::default();
     let mut configs = HashMap::new();
     let mut map: HashMap<String, Arc<dyn Outbound>> = HashMap::new();
     let mut order = Vec::new();

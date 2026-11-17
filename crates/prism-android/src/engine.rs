@@ -39,6 +39,7 @@ struct Running {
     automatic: Option<crate::automatic::Plan>,
     geo_valid: Arc<AtomicBool>,
     ads_enabled: bool,
+    chain: Option<crate::chain::Plan>,
     local_proxy: Arc<tokio::sync::Mutex<Option<crate::local_proxy::LocalProxy>>>,
     can_lan: Arc<dyn Fn() -> bool + Send + Sync>,
     proxy_notify: Arc<dyn Fn(bool, bool, u16) + Send + Sync>,
@@ -46,6 +47,13 @@ struct Running {
 }
 static ENGINE: Mutex<Option<Running>> = Mutex::new(None);
 fn current_node_name(r: &Running) -> String {
+    if let Some(chain) = &r.chain {
+        return chain
+            .hops
+            .last()
+            .map(|h| h.node.name.clone())
+            .unwrap_or_default();
+    }
     r.automatic
         .as_ref()
         .and_then(|p| {
@@ -63,7 +71,41 @@ fn current_node_name(r: &Running) -> String {
         })
         .unwrap_or_else(|| r.node_name.clone())
 }
+fn node_labels(r: &Running) -> std::collections::HashMap<String, String> {
+    let mut labels = std::collections::HashMap::new();
+    if let Some(chain) = &r.chain {
+        labels.insert("手机节点".into(), "链式代理".into());
+        for hop in &chain.hops {
+            labels.insert(crate::chain::name(&hop.id), hop.node.name.clone());
+        }
+    }
+    if let Some(plan) = &r.automatic {
+        labels.insert("手机节点".into(), "自动优选".into());
+        for c in &plan.candidates {
+            labels.insert(crate::automatic::name(&c.id), c.node.name.clone());
+        }
+    }
+    labels
+}
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
+#[no_mangle]
+pub extern "system" fn Java_dev_prism_android_CoreBridge_validateChain(
+    mut env: JNIEnv,
+    _: JClass,
+    raw: JString,
+) -> jstring {
+    ffi(&mut env, |env| {
+        let result = (|| -> anyhow::Result<Value> {
+            let raw = input(env, &raw).map_err(|_| anyhow::anyhow!("链式配置无效"))?;
+            anyhow::ensure!(raw.len() <= 128 * 1024, "链式配置过长");
+            let chain: crate::chain::Plan =
+                serde_json::from_str(&raw).map_err(|_| anyhow::anyhow!("链式配置格式无效"))?;
+            chain.validate()?;
+            Ok(json!({"ok":true,"udpPossible":chain.udp_possible()}))
+        })();
+        result.unwrap_or_else(|e| json!({"error":e.to_string()}))
+    })
+}
 #[no_mangle]
 pub extern "system" fn Java_dev_prism_android_CoreBridge_resetAdStats(
     mut env: JNIEnv,
@@ -291,7 +333,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_diagnose(
         else {
             return json!({"error":"请输入有效域名/IPv4 和端口；当前不支持 IPv6 目标","stage":"input"});
         };
-        let Some((hub, handle, session, node_name)) = ENGINE
+        let Some((hub, handle, session, node_name, labels, chain_path)) = ENGINE
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .as_ref()
@@ -302,6 +344,14 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_diagnose(
                     r.handle.clone(),
                     r.session_id,
                     current_node_name(r),
+                    node_labels(r),
+                    r.chain.as_ref().map(|p| {
+                        p.hops
+                            .iter()
+                            .map(|h| h.node.name.clone())
+                            .collect::<Vec<_>>()
+                            .join(" → ")
+                    }),
                 )
             })
         else {
@@ -314,8 +364,20 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_diagnose(
             let mut result = crate::diagnostics::run(&core, request).await;
             result["sessionId"] = json!(session.to_string());
             result["nodeName"] = json!(node_name);
+            if let Some(chains) = result.get("chains").and_then(|v| v.as_array()).cloned() {
+                result["chainIds"] = json!(chains.clone());
+                result["chains"] = json!(chains
+                    .iter()
+                    .map(|v| v
+                        .as_str()
+                        .map(|s| labels.get(s).cloned().unwrap_or_else(|| s.to_owned()))
+                        .unwrap_or_default())
+                    .collect::<Vec<_>>());
+            }
             if dns {
-                result["path"] = json!("所选节点 → 加密 DoH（可能命中内核缓存）");
+                result["path"] = json!(chain_path
+                    .map(|path| format!("链式代理 {path} → 加密 DoH（可能命中内核缓存）"))
+                    .unwrap_or_else(|| "当前代理出口 → 加密 DoH（可能命中内核缓存）".into()));
             }
             let _ = tx.send(result);
         });
@@ -343,7 +405,7 @@ fn traffic_snapshot(hub: &Hub, node_id: &str, session_id: u64) -> Value {
         .map(|((node, policy), counts)| (node.clone(), policy.clone(), counts.clone()))
         .collect();
     let buckets: Vec<_> = buckets.into_iter().map(|(node, policy, counts)| json!({
-        "node":if node == "手机节点" {node_id.to_owned()} else if let Some(id)=node.strip_prefix("候选.") {id.to_owned()} else {node}, "policy":policy,
+        "node":if node == "手机节点" {node_id.to_owned()} else if let Some(id)=node.strip_prefix("候选.").or_else(||node.strip_prefix("链节点.")) {id.to_owned()} else {node}, "policy":policy,
         "upload":counts.upload.load(Ordering::Relaxed), "download":counts.download.load(Ordering::Relaxed)
     })).collect();
     json!({"sessionId":session_id.to_string(),"buckets":buckets})
@@ -390,11 +452,17 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_connections(
             let slot = ENGINE.lock().unwrap_or_else(|p| p.into_inner());
             slot.as_ref()
                 .filter(|r| r.alive.load(Ordering::Acquire))
-                .map(|r| (r.hub.core().tunnel.stats.clone(), r.session_id.to_string()))
+                .map(|r| {
+                    (
+                        r.hub.core().tunnel.stats.clone(),
+                        r.session_id.to_string(),
+                        node_labels(r),
+                    )
+                })
         };
         match snapshot {
-            Some((stats, session)) => {
-                serde_json::to_value(query.snapshot(&stats, session)).unwrap()
+            Some((stats, session, labels)) => {
+                serde_json::to_value(query.snapshot_with_labels(&stats, session, &labels)).unwrap()
             }
             None => json!({"error":"内核未运行"}),
         }
@@ -461,17 +529,30 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
         };
         let node_name = session.node.name.clone();
         let automatic = session.automatic.clone();
-        let upstreams: Vec<_> = automatic
+        let chain = session.chain.clone();
+        let upstreams: Vec<_> = chain
             .as_ref()
-            .map(|p| p.candidates.iter().map(|c| &c.node).collect())
+            .map(|p| p.hops.iter().map(|h| &h.node).collect())
+            .or_else(|| {
+                automatic
+                    .as_ref()
+                    .map(|p| p.candidates.iter().map(|c| &c.node).collect())
+            })
             .unwrap_or_else(|| vec![&session.node]);
         let loopback_node_ports = upstreams
             .into_iter()
-            .filter_map(|n| match n.server.parse::<std::net::IpAddr>() {
-                Ok(std::net::IpAddr::V4(ip)) if ip.is_loopback() || ip.is_unspecified() => {
+            .filter_map(|n| {
+                if n.server
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback() || ip.is_unspecified())
+                    || n.server
+                        .trim_end_matches('.')
+                        .eq_ignore_ascii_case("localhost")
+                {
                     Some(n.port)
+                } else {
+                    None
                 }
-                _ => None,
             })
             .collect();
         let node_id = serde_json::from_str::<Value>(&raw)
@@ -689,6 +770,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                     automatic,
                     geo_valid,
                     ads_enabled,
+                    chain,
                     local_proxy: Arc::new(tokio::sync::Mutex::new(None)),
                     can_lan,
                     proxy_notify,
@@ -772,7 +854,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_status(
                     "sessionId":r.session_id.to_string(),"uptimeMs":r.started.elapsed().as_millis() as u64,
                     "connections":connections,"nodeName":current_node_name(r),"directRules":r.direct_rules,"activeRules":r.active_rules,"defaultTarget":r.default_target,
                     "automatic":r.automatic.as_ref().map(|p|p.snapshot(&r.hub)).unwrap_or_else(||json!({"enabled":false})),"geodataValid":r.geo_valid.load(Ordering::Acquire),
-                    "adblockEnabled":r.ads_enabled,"adsBlocked":s.ads_blocked.load(Ordering::Relaxed)})
+                    "adblockEnabled":r.ads_enabled,"adsBlocked":s.ads_blocked.load(Ordering::Relaxed),"chain":r.chain.as_ref().map(|p|p.snapshot()).unwrap_or_else(||json!({"enabled":false}))})
             }
             None => json!({"running":false,"upload":0,"download":0}),
         }

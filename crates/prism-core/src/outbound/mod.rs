@@ -20,7 +20,7 @@ pub mod wireguard;
 
 use std::collections::HashMap;
 use std::io;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, Weak};
 
 use async_trait::async_trait;
 
@@ -62,6 +62,10 @@ pub struct Registry {
 }
 
 impl Registry {
+    /// A configured concrete proxy, excluding built-ins and name collisions with groups.
+    pub fn is_protocol_node(&self,name:&str)->bool {
+        !crate::config::BUILTIN.contains(&name) && self.configs.contains_key(name) && self.map.get(name).is_some_and(|node|node.as_group().is_none())
+    }
     pub fn get(&self, name: &str) -> Option<Arc<dyn Outbound>> {
         self.map.get(name).cloned()
     }
@@ -80,13 +84,28 @@ impl Registry {
             chain.push(next.name().to_string());
             out = next;
         }
+        if let Some(group)=out.as_group().filter(|g|g.kind()==crate::config::GroupKind::Relay) {
+            // Fixed protocol-node relays have an unambiguous wire order. The
+            // tunnel reverses this list so its first entry is the actual exit.
+            if group.members().iter().all(|name|self.is_protocol_node(name)) {
+                chain.extend(group.members().iter().cloned());
+            }
+        }
         Ok((out, chain))
     }
 }
 
-/// Lazily-filled handle the groups use to look up their members (groups are
-/// constructed before the registry that contains them).
-pub type RegistryCell = Arc<OnceLock<Arc<Registry>>>;
+/// Non-owning link: groups are constructed before the registry and cannot
+/// own it back. A live tunnel owns the registry while connections need it.
+#[derive(Default)]
+pub struct RegistryLink(OnceLock<Weak<Registry>>);
+impl RegistryLink {
+    pub fn get(&self)->Option<Arc<Registry>> {self.0.get()?.upgrade()}
+    pub fn set(&self,registry:Arc<Registry>)->Result<(),Arc<Registry>> {
+        self.0.set(Arc::downgrade(&registry)).map_err(|_|registry)
+    }
+}
+pub type RegistryCell = Arc<RegistryLink>;
 
 /// Builds a protocol outbound that reaches its server through `dialer`.
 /// Errors mean "unsupported by prism-core".

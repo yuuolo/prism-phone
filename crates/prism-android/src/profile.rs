@@ -27,6 +27,8 @@ pub struct Session {
     pub geodata: Option<crate::geodata::Snapshot>,
     #[serde(default)]
     pub adblock: Option<crate::adblock::Config>,
+    #[serde(default)]
+    pub chain: Option<crate::chain::Plan>,
 }
 
 pub(crate) fn supported(node: &ProxyConfig) -> bool {
@@ -71,6 +73,10 @@ pub fn import(raw: &str) -> Result<Import> {
     Ok(Import { nodes, skipped })
 }
 pub fn build(s: Session) -> Result<(Profile, String)> {
+    ensure!(
+        !(s.automatic.is_some() && s.chain.is_some()),
+        "自动优选和链式代理不能同时启用"
+    );
     ensure!(
         supported(&s.node),
         "所选节点包含首版不支持的协议、传输或证书设置"
@@ -117,6 +123,9 @@ pub fn build(s: Session) -> Result<(Profile, String)> {
         ..Default::default()
     };
     if let Some(plan) = s.automatic {
+        plan.apply(&mut p)?;
+    }
+    if let Some(plan) = s.chain {
         plan.apply(&mut p)?;
     }
     let mut doc = config::clash::emit(&p);
@@ -172,6 +181,7 @@ mod tests {
             automatic: None,
             geodata: None,
             adblock: None,
+            chain: None,
         })
         .unwrap();
         assert!(p.general.block_ipv6);
@@ -194,6 +204,7 @@ mod tests {
             automatic: None,
             geodata: None,
             adblock: None,
+            chain: None,
         })
         .is_err());
         assert!(build(Session {
@@ -206,6 +217,7 @@ mod tests {
             automatic: None,
             geodata: None,
             adblock: None,
+            chain: None,
         })
         .is_ok());
     }

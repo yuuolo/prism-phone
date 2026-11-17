@@ -101,7 +101,7 @@ mod tests {
         collections::HashMap,
         sync::{
             atomic::{AtomicUsize, Ordering},
-            Arc, Mutex, OnceLock,
+            Arc, Mutex,
         },
     };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -143,7 +143,7 @@ mod tests {
     #[tokio::test]
     async fn dns_queries_real_proxy_upstream_instead_of_fake_ip_and_never_falls_back_direct() {
         let hits = Arc::new(AtomicUsize::new(0));
-        let cell: RegistryCell = Arc::new(OnceLock::new());
+        let cell: RegistryCell = Default::default();
         let group = Arc::new(ProxyGroup::new(
             GroupConfig::new(
                 "dns-path",
@@ -163,7 +163,7 @@ mod tests {
             unified_delay: false,
             configs: HashMap::from([("test-dns-proxy".into(), ProxyConfig::default())]),
         });
-        assert!(cell.set(reg).is_ok());
+        assert!(cell.set(reg.clone()).is_ok());
         let cfg = DnsConfig {
             enable: true,
             ipv6: false,

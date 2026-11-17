@@ -149,8 +149,9 @@ impl Upstream {
     fn proxy_outbound(&self, name: &str) -> io::Result<Arc<dyn Outbound>> {
         let reg = self.reg.get().ok_or_else(|| other("registry not ready"))?;
         let (out, _) = reg.resolve(name, &self.target())?;
-        if self.proxy_only && !reg.configs.contains_key(out.name()) {
-            return Err(other("DNS REJECT: selected outbound is not a proxy node (DIRECT/REJECT/relay forbidden)"));
+        let fixed_proxy_relay=out.as_group().is_some_and(|group|group.kind()==crate::config::GroupKind::Relay && !group.members().is_empty() && group.members().iter().all(|name|reg.is_protocol_node(name)));
+        if self.proxy_only && !reg.is_protocol_node(out.name()) && !fixed_proxy_relay {
+            return Err(other("DNS REJECT: only a proxy node or a fixed proxy-only relay is allowed"));
         }
         Ok(out)
     }
@@ -423,7 +424,7 @@ mod tests {
     use super::*;
 
     fn up(spec: &str) -> Upstream {
-        Upstream::parse(spec, Arc::new(vec![]), Arc::new(std::sync::OnceLock::new())).unwrap()
+        Upstream::parse(spec, Arc::new(vec![]), Default::default()).unwrap()
     }
 
     #[tokio::test]
@@ -487,6 +488,6 @@ mod tests {
         assert_eq!((u.kind, u.detour.as_deref()), (Kind::H3, Some("PROXY")));
         let u = up("h3://cloudflare-dns.com/dns-query");
         assert_eq!((u.kind, u.path.as_str()), (Kind::H3, "/dns-query"));
-        assert!(Upstream::parse("dhcp://en0", Arc::new(vec![]), Arc::new(std::sync::OnceLock::new())).is_err());
+        assert!(Upstream::parse("dhcp://en0", Arc::new(vec![]), Default::default()).is_err());
     }
 }

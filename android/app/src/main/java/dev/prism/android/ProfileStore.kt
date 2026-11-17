@@ -19,9 +19,22 @@ class ProfileStore(context: Context) {
     companion object {
         private val lock = Any(); private const val ALIAS = "prism-mobile-profile-v1"
         fun sessionServers(session:JSONObject):List<String> {
+            // Later hops are reached through preceding proxies, not by a phone LAN socket.
+            session.optJSONObject("chain")?.getJSONArray("hops")?.let {hops ->return listOf(hops.getJSONObject(0).getJSONObject("node").getString("server"))}
             val candidates=session.optJSONObject("automatic")?.optJSONArray("candidates")
             return if(candidates==null) listOf(session.getJSONObject("node").getString("server"))
                 else (0 until candidates.length()).map {candidates.getJSONObject(it).getJSONObject("node").getString("server")}
+        }
+        fun chainNodes(state:JSONObject):List<JSONObject> {
+            val nodes=state.getJSONArray("nodes");val sources=state.getJSONArray("subscriptions")
+            val names=(0 until sources.length()).associate {sources.getJSONObject(it).getString("id") to sources.getJSONObject(it).optString("name")}
+            val all=(0 until nodes.length()).map {nodes.getJSONObject(it)};val duplicates=all.groupingBy {it.optString("name")}.eachCount();val used=mutableSetOf<String>()
+            return all.mapIndexed {index,node ->
+                val source=if(node.optBoolean("_local")) "单独节点" else names[node.optString("_sourceId")] ?: "原有节点"
+                var label=node.optString("name");if((duplicates[label] ?: 0)>1)label+=" · $source · ${index+1}"
+                while(!used.add(label))label+=" · ${index+1}"
+                JSONObject(node.toString()).put("_displayName",label)
+            }
         }
     }
     private fun key(): SecretKey {
@@ -80,15 +93,27 @@ class ProfileStore(context: Context) {
         val nodes = profile.getJSONArray("nodes")
         require(nodes.length() > 0)
         val selected = profile.optInt("selected", 0).coerceIn(0, nodes.length()-1)
-        val pool=MergedNodes.pool(profile)
-        require(pool.missingSources.isEmpty()) {"合并来源已移除，请重新配置订阅合并"}
-        val selectedNode=nodes.getJSONObject(selected);val merged=pool.aliases[selectedNode.getString("_id")]
-        require(merged!=null) {"所选节点不在合并池中，请重新选择节点"}
-        val sessionNode=JSONObject(selectedNode.toString()).put("name",MergedNodes.display(merged))
+        val chain=profile.optJSONObject("chain");val chainEnabled=chain?.optBoolean("enabled")==true
+        val pool=if(chainEnabled)null else MergedNodes.pool(profile)
+        if(pool!=null)require(pool.missingSources.isEmpty()) {"合并来源已移除，请重新配置订阅合并"}
+        val selectedNode=nodes.getJSONObject(selected);val merged=pool?.aliases?.get(selectedNode.getString("_id"))
+        require(chainEnabled || merged!=null) {"所选节点不在合并池中，请重新选择节点"}
+        val sessionNode=JSONObject(selectedNode.toString()).put("name",if(merged==null) selectedNode.getString("name") else MergedNodes.display(merged))
         val session=JSONObject().put("node",sessionNode).put("routing",profile.getJSONObject("routing"))
         profile.optJSONObject("geodata")?.let {session.put("geodata",it)}
         profile.optJSONObject("adblock")?.let {session.put("adblock",it)}
         val automatic=profile.optJSONObject("automatic")
+        require(!chainEnabled || automatic?.optBoolean("enabled")!=true) {"请先关闭自动优选再启用链式代理"}
+        if(chainEnabled) {
+            val ids=chain!!.getJSONArray("hopIds");require(ids.length() in 2..4) {"链式代理须有 2–4 个节点"};val entries=chainNodes(profile)
+            val hops=JSONArray()
+            for(i in 0 until ids.length()) {
+                val id=ids.getString(i);val node=entries.firstOrNull {it.getString("_id")==id}
+                require(node!=null) {"链式节点已移除，请重新配置链路"}
+                hops.put(JSONObject().put("id",id).put("node",JSONObject(node.toString()).put("name",MergedNodes.display(node))))
+            }
+            session.put("chain",JSONObject().put("hops",hops).put("udpEnabled",chain.getBoolean("udpEnabled")))
+        }
         if(automatic?.optBoolean("enabled")==true) {
             val ids=automatic.getJSONArray("candidateIds");require(ids.length() in 2..16) {"自动优选须有 2–16 个候选节点"}
             val candidates=JSONArray()
@@ -97,7 +122,7 @@ class ProfileStore(context: Context) {
                 val id=ids.getString(i)
                 val node=(0 until nodes.length()).map {nodes.getJSONObject(it)}.firstOrNull {it.optString("_id")==id}
                 require(node!=null) {"自动优选候选已移除，请重新配置候选节点"}
-                val entry=pool.aliases[id];require(entry!=null) {"自动优选候选不在合并池中，请重新配置"}
+                val entry=pool!!.aliases[id];require(entry!=null) {"自动优选候选不在合并池中，请重新配置"}
                 require(represented.add(entry.getString("_id"))) {"自动优选候选经合并后重复，请重新配置"}
                 candidates.put(JSONObject().put("id",id).put("node",JSONObject(node.toString()).put("name",MergedNodes.display(entry))))
             }
@@ -111,8 +136,23 @@ class ProfileStore(context: Context) {
         require(next.getJSONArray("candidateIds").length()<=16) {"最多 16 个候选节点"}
         require(next.getLong("intervalSeconds") in 300..3600 && next.getLong("toleranceMs") in 0..2000) {"间隔须为 300–3600 秒，容差为 0–2000 毫秒"}
         state.put("automatic",next)
+        if(!next.getBoolean("enabled")) {save(state);return@synchronized}
         val result=JSONObject(CoreBridge.validateSession(buildSession(state).toString()))
         require(!result.has("error")) {"自动优选候选、规则或节点配置无效"};save(state)
+    }
+    fun updateChain(expected:String,next:JSONObject)=synchronized(lock) {
+        requireIdle();val state=load()
+        check((state.optJSONObject("chain")?.toString() ?: "{}")==expected) {"链式配置已变化，请重新打开后修改"}
+        require(next.getJSONArray("hopIds").length()<=4) {"链式最多 4 个节点"}
+        state.put("chain",next)
+        if(!next.getBoolean("enabled")) {save(state);return@synchronized}
+        val session=buildSession(state)
+        if(next.getBoolean("enabled")) {
+            val validation=JSONObject(CoreBridge.validateChain(session.getJSONObject("chain").toString()))
+            require(!validation.has("error")) {validation.optString("error")}
+        }
+        val validation=JSONObject(CoreBridge.validateSession(session.toString()))
+        require(!validation.has("error")) {"链式节点、规则或协议参数无效"};save(state)
     }
     fun updateMerge(expected:String,next:JSONObject)=synchronized(lock) {
         requireIdle();val state=load()

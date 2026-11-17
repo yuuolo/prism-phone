@@ -37,6 +37,7 @@ class MainActivity : Activity() {
     private var nodes: Spinner? = null
     @Volatile private var busy = false
     private var nodeCount = 0
+    private var hasConfiguredChain=false
     private var checkingUpdate = false
     private var darkCard = false
     private var progress: ProgressBar? = null
@@ -147,6 +148,7 @@ class MainActivity : Activity() {
         label("加密 DNS · 全设备接管",13f).setTextColor(Color.rgb(215,204,237))
         val state=try {store.load()} catch (_: Exception) {label("无法读取加密配置，请检查本机存储后重新导入"); JSONObject().put("nodes",JSONArray())}
         val pool=MergedNodes.pool(state);val choices=pool.nodes;nodeCount=choices.size
+        hasConfiguredChain=state.optJSONObject("chain")?.optBoolean("enabled")==true
         val selectedId=state.getJSONArray("nodes").optJSONObject(state.optInt("selected"))?.optString("_id")
         val selected=pool.aliases[selectedId]?.optString("_id")
         val selectedIndex=choices.indexOfFirst {it.optString("_id")==selected}
@@ -170,9 +172,10 @@ class MainActivity : Activity() {
             }
         }
         if(state.optJSONObject("automatic")?.optBoolean("enabled")==true) label("已启用自动优选，连接使用候选池；此处保留手动选择。",12f)
+        if(hasConfiguredChain) label("已启用链式代理，连接使用有序链路；此处保留手动选择。",12f)
         connect=button("连接") {
             if(!idle()) {startService(Intent(this,PrismVpnService::class.java).setAction(PrismVpnService.DISCONNECT))}
-            else if(nodeCount>0) requestVpnConnection()
+            else if(nodeCount>0 || hasConfiguredChain) requestVpnConnection()
         }.apply {setTextColor(Color.WHITE); background=PrismStyle.shape(PrismStyle.purple,dp(16).toFloat()); minHeight=dp(62); textSize=17f}
         counters=label("↑ 0 B    ↓ 0 B")
         }
@@ -230,7 +233,7 @@ class MainActivity : Activity() {
         if(tab!=0) return
         status?.text=stage + if(PrismVpnService.detail.isEmpty()) "" else "\n${PrismVpnService.detail}"
         connect?.text=when(stage) {"已连接","正在连接" -> "断开"; "正在断开" -> "正在断开"; else -> "连接"}
-        connect?.isEnabled=stage!="正在断开" && (nodeCount>0 || !idle()) && (!busy || !idle())
+        connect?.isEnabled=stage!="正在断开" && (nodeCount>0 || hasConfiguredChain || !idle()) && (!busy || !idle())
         connect?.alpha=if(connect?.isEnabled==true) 1f else .5f
         nodes?.isEnabled=idle() && nodeCount>0 && !busy
         if(stage=="已连接") refreshDashboard()
@@ -369,6 +372,7 @@ class MainActivity : Activity() {
         button("自动优选节点") {startActivity(Intent(this,AutomaticActivity::class.java))}
         button("地区数据与分类") {startActivity(Intent(this,GeoDataActivity::class.java))}
         button("广告域名拦截") {startActivity(Intent(this,AdblockActivity::class.java))}
+        button("链式代理设置") {startActivity(Intent(this,ChainActivity::class.java))}
         }
         card {
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)

@@ -1624,11 +1624,14 @@ dependencies = [
  "jni 0.21.1",
  "libc",
  "prism-core",
+ "rcgen",
+ "rustls",
  "serde",
  "serde_json",
  "serde_yaml",
  "sha2",
  "tokio",
+ "tokio-rustls",
  "tokio-util",
 ]
 

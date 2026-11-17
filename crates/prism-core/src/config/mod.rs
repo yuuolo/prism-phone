@@ -172,6 +172,8 @@ pub struct GroupConfig {
     pub tolerance: u64,
     /// Mobile reloads can defer a fresh round to bound network-flap probing.
     pub health_initial_delay: u64,
+    /// Mobile relay policy: refuse UDP instead of bypassing a TCP-only chain.
+    pub block_udp: bool,
     /// proxy-providers whose nodes are appended to `proxies` (Clash `use`).
     #[serde(default)]
     pub use_providers: Vec<String>,
@@ -194,6 +196,7 @@ impl GroupConfig {
             interval: 300,
             tolerance: 50,
             health_initial_delay: 1,
+            block_udp: false,
             use_providers: Vec::new(),
             filter: None,
             exclude_filter: None,
