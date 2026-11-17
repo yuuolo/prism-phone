@@ -85,13 +85,14 @@ def main():
         last_dump = ""
         for _ in range(3):
             shell("rm", "-f", remote)
-            last_dump = shell("uiautomator", "dump", remote, check=False, timeout=20)
+            dumped = subprocess.run([args.adb,"-s",args.serial,"shell","uiautomator","dump",remote],capture_output=True,timeout=20)
+            last_dump = (dumped.stdout + dumped.stderr).decode("utf-8","replace").strip()
             raw = adb("exec-out", "cat", remote, check=False)
             try:
                 return ET.fromstring(raw)
             except ET.ParseError:
                 time.sleep(.5)
-        raise RuntimeError("No current UI hierarchy: " + last_dump[:180])
+        raise RuntimeError("No current UI hierarchy: " + last_dump[:350])
 
     def click_button(text):
         for node in ui().iter("node"):
@@ -133,7 +134,9 @@ def main():
         shell("wm", "dismiss-keyguard", check=False)
         shell("am", "start", "-n", "dev.prism.android/.MainActivity", "-f", "0x10008000")
         time.sleep(1)
+        phase = "ui-connect"
         click_button("连接")
+        phase = "ui-connected"
         wait_for("connected app UI",lambda:any(n.get("text")=="已连接" for n in ui().iter("node")))
         network = wait_for("normal UI VPN connection", vpn_network)
         app_pid = pid()
@@ -175,6 +178,7 @@ def main():
             raise RuntimeError("VPN restarted on wake")
         shell("am", "start", "-n", "dev.prism.android/.MainActivity", "-f", "0x10008000")
         time.sleep(1)
+        phase = "ui-disconnect"
         click_button("断开")
         wait_for("user disconnect releases VPN", lambda: vpn_network() is None and not foreground_service())
         time.sleep(4)
