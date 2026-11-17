@@ -93,11 +93,15 @@ class NetworkRecoveryTest {
             before=status().getLong("networkRebuilds");wifi(false)
             waitFor("cellular default without Wi-Fi",30000){!physical(NetworkCapabilities.TRANSPORT_WIFI) && physical(NetworkCapabilities.TRANSPORT_CELLULAR) && physicalDefaultUses(NetworkCapabilities.TRANSPORT_CELLULAR)}
             waitFor("OS callback rebuild on cellular"){status().getLong("networkRebuilds")>before}
+            // Check preservation BEFORE new traffic could hide a counter reset.
+            assertTrue(status().getLong("upload")>=upload);assertTrue(status().getLong("download")>=download)
             dns("example.net");applicationTls(port);assertEquals(session,status().getString("sessionId"))
             assertTrue(status().getLong("upload")>=upload);assertTrue(status().getLong("download")>=download)
+            val cellUpload=status().getLong("upload");val cellDownload=status().getLong("download")
             before=status().getLong("networkRebuilds");wifi(true)
             waitFor("Wi-Fi default returns",30000){physical(NetworkCapabilities.TRANSPORT_WIFI) && physicalDefaultUses(NetworkCapabilities.TRANSPORT_WIFI)}
             waitFor("OS callback rebuild on Wi-Fi"){status().getLong("networkRebuilds")>before}
+            assertTrue(status().getLong("upload")>=cellUpload);assertTrue(status().getLong("download")>=cellDownload)
             dns("www.iana.org");applicationTls(port);assertEquals(session,status().getString("sessionId"))
             val buckets=JSONObject(CoreBridge.traffic()).getJSONArray("buckets")
             assertTrue((0 until buckets.length()).map{buckets.getJSONObject(it)}.any{it.getString("node")==ids[1] && it.getLong("upload")>0 && it.getLong("download")>0})
