@@ -48,7 +48,7 @@
 
 ## 当前交付说明
 
-2026-11-17 软件基线：`80209b6` 的[完整 CI 44094930968](https://github.com/yuuolo/prism-phone/actions/runs/44094930968)全部通过，包含 ARM64/x86_64、Debug/Release、双 Lint、32 项手机 Rust、共享内核回归、6 项 Android 单元测试、Release 无测试 Wi-Fi 权限检查，以及 API 26 与 Android 17/16 KiB 各 18 项完整回归。默认 CI 不运行原证书辅助入口、不使用私钥；两个系统的原签名实际覆盖由本机独立完成，相关数据模型、JNI 声明和正式清单自该验收后未变。未发布新 APK，稳定版剩余验收见上表。
+2026-11-18 软件基线：`e82aa77` 的[完整 CI 44142083276](https://github.com/yuuolo/prism-phone/actions/runs/44142083276)全部通过，包含 ARM64/x86_64、Debug/Release、双 Lint、32 项手机 Rust、共享内核回归、6 项 Android 单元测试、Release 无测试 Wi-Fi 权限检查，以及 API 26 与 Android 17/16 KiB 各 18 项完整回归和各自独立的 180 秒 Doze 验收。已核对两份三阶段原始报告；此前 Android 17 出现过待机探测 EOF，根因仍未定位，不能将本次通过表述为该问题已修复，详见下节。默认 CI 不运行原证书辅助入口、不使用私钥；两个系统的原签名实际覆盖由本机独立完成，相关数据模型、JNI 声明和正式清单自该验收后未变。未发布新 APK，稳定版剩余验收见上表。
 
 ### 独立后台软件验收（未发布开发）
 

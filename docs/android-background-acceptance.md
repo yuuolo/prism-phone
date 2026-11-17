@@ -16,6 +16,8 @@
 
 2026-11-18 CI 追踪：`399d06b` 的 [API 26 任务](https://github.com/yuuolo/prism-phone/actions/runs/44140927005/job/134246115577)通过 18 项完整回归及本项 180 秒验收，确认一次性快照解决了动态界面等待静止的问题。同轮 Android 17 的 18 项回归通过，但 Doze 中冷域名请求发生 `tls handshake eof`，整体 CI 失败；此前也有 Android 17 完整通过的运行。这一间歇性失败尚未定位，不能因本机成功而宣称已修复。后续夹具增加连接编号、允许列表拒绝、容量不足、空闲超时、EOF 方向及字节数日志，失败时保留清理前现场；通过标准不变，不以重试覆盖失败。
 
+`e82aa77` 的[完整 CI 44142083276](https://github.com/yuuolo/prism-phone/actions/runs/44142083276)随后全部通过：双系统各 18 项完整回归，以及各自独立的 180 秒 Doze、三阶段 HTTP 200、进程/VPN 身份保留、正常界面断开和断开对照。Android 17 夹具日志确认本次冷域名连接确实转往允许的 `cloudflare-dns.com`，TLS 字节正常往返；两份原始报告均已逐字段核对。这证明该次验收通过，未定位或消除前述历史 EOF 的根因。
+
 `prism-acceptance-client` 仅由 Cargo 的 `acceptance-tools` feature 显式构建，作为独立测试制品，不进入 APK。专用 seed APK 与默认 JUnit APK 分开保存，默认回归仍执行原有 18 项。CI 在两套系统的完整回归后分别执行本项验收。
 
 API 26 的平台 `uiautomator dump` 会等待一秒界面静止，动态仪表盘可能持续触发 `could not get idle state`。验收改用独立 shell 进程的一次性 `PrismUiSnapshot`，按 [AOSP shell wrapper](https://android.googlesource.com/platform/frameworks/testing/+/89f6117/uiautomator/library/src/com/android/uiautomator/core/UiAutomationShellWrapper.java) 的连接方式读取当前无障碍控件，不等待界面静止。每次快照均退出并断开，不在待机期间持有控制进程；只点击实际读取到的本应用启用按钮。反射仅存在于外部测试工具，不进入 APK，也不修改生产刷新频率。失败时在清理前保存系统日志、网络和 Activity 状态。
