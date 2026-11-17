@@ -20,6 +20,8 @@
 
 后续源码排查发现可确定复现的相关缺陷：DNS 流式连接池在复用失败后仍从池中取第二条连接；当至少两条旧连接同时失效时，两次尝试都耗在旧连接上，即使上游允许新建也会失败。新增回归在旧代码上失败，修正后验证两条及满池四条失效时真实新建 TCP 并收到回答，同时保留其余池项。恢复尝试现强制新建，仍沿用原查询时限、最多两次尝试与相同 DNS 出站；不增加应用层验收重试或空闲探测。该缺陷可以造成待机后的解析失败，历史 CI 的 EOF 是否全部由它引起仍未证明，需继续核对移动端回归。
 
+修复提交 `f4e12f5` 的[完整 CI 44145489978](https://github.com/yuuolo/prism-phone/actions/runs/44145489978)全部通过：新增确定性池恢复回归在 Linux 执行通过，手机 Rust 32 项、共享内核 101 项、构建/Lint/单元测试及双系统各 18 项与独立 180 秒 Doze 均通过。两份三阶段 HTTP 200、进程/VPN 身份及断开对照报告已逐字段核对；宿主 Windows 的共享内核 105 项也通过。上述证明该池恢复缺陷已修正，不能据此证明所有历史 TLS EOF 同源或真实网络永不失败。
+
 `prism-acceptance-client` 仅由 Cargo 的 `acceptance-tools` feature 显式构建，作为独立测试制品，不进入 APK。专用 seed APK 与默认 JUnit APK 分开保存，默认回归仍执行原有 18 项。CI 在两套系统的完整回归后分别执行本项验收。
 
 API 26 的平台 `uiautomator dump` 会等待一秒界面静止，动态仪表盘可能持续触发 `could not get idle state`。验收改用独立 shell 进程的一次性 `PrismUiSnapshot`，按 [AOSP shell wrapper](https://android.googlesource.com/platform/frameworks/testing/+/89f6117/uiautomator/library/src/com/android/uiautomator/core/UiAutomationShellWrapper.java) 的连接方式读取当前无障碍控件，不等待界面静止。每次快照均退出并断开，不在待机期间持有控制进程；只点击实际读取到的本应用启用按钮。反射仅存在于外部测试工具，不进入 APK，也不修改生产刷新频率。失败时在清理前保存系统日志、网络和 Activity 状态。
