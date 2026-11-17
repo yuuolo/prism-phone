@@ -37,6 +37,7 @@ class LocalProxyActivity : Activity() {
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         val root=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL; isFocusableInTouchMode=true; setBackgroundColor(PrismStyle.background)
+            setPadding(dp(18),dp(12),dp(18),dp(12)) // Legacy decor may consume insets before this view.
             setOnApplyWindowInsetsListener {v,insets ->
                 if(Build.VERSION.SDK_INT>=30) {
                     val b=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())

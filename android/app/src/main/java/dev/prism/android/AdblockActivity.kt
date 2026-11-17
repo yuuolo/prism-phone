@@ -31,6 +31,7 @@ class AdblockActivity:Activity() {
         val config=runCatching {ProfileStore(this).load().optJSONObject("adblock") ?: JSONObject()}.getOrElse {finish();return};expected=config.toString()
         val outer=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL;isFocusableInTouchMode=true;setBackgroundColor(PrismStyle.background)
+            setPadding(dp(16),dp(8),dp(16),dp(8)) // Legacy decor may consume insets before this view.
             setOnApplyWindowInsetsListener {v,insets ->
                 if(Build.VERSION.SDK_INT>=30) {val b=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout());v.setPadding(b.left+dp(16),b.top+dp(8),b.right+dp(16),b.bottom+dp(8))}
                 else v.setPadding(dp(16),insets.systemWindowInsetTop+dp(8),dp(16),insets.systemWindowInsetBottom+dp(8));insets
