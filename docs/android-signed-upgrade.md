@@ -26,3 +26,5 @@ adb -s emulator-5560 shell am instrument -w -e phase verify dev.prism.android.te
 - Android 8.0/API 26 和 Android 17/16 KiB 均完成真实 Beta.2 安装、prepare、覆盖安装和 verify；检查了升级后的连接页及保留的选择。
 - 本轮候选仍为 versionCode 3，所以这是 Android 包管理器允许的同版本覆盖验收，不是内置更新器的新版本发布。正式发布必须递增版本，原有同签名高版本与错误签名更新包校验继续由默认回归检查。
 - 本记录不替代真机覆盖、厂商系统、长时后台、耗电及蜂窝网络切换验收。
+
+辅助程序的默认 runner 编译和回归由 `f5040f9` 的[完整 CI 44086595517](https://github.com/yuuolo/prism-phone/actions/runs/44086595517)通过，双系统各 17 项；CI 没有读取正式签名材料。
