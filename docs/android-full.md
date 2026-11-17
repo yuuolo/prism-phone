@@ -45,13 +45,15 @@
 
 ### 链式代理（未发布开发）
 
-首轮 [CI 44078072615](https://github.com/yuuolo/prism-phone/actions/runs/44078072615) 实际转发和 DNS 通过，但页面销毁/重开竞态使整轮失败；已修复并在 API 26 复现后回归通过。[协议补测 CI 44079019970](https://github.com/yuuolo/prism-phone/actions/runs/44079019970)（`48d7775`）双架构、Debug/Release、Lint、Rust 与 Android 17 十七项全通过；最低系统和修复后双系统 CI 另行记录。
+首轮 [CI 44078072615](https://github.com/yuuolo/prism-phone/actions/runs/44078072615) 实际转发和 DNS 通过，但页面销毁/重开竞态使整轮失败；已修复并在 API 26 复现后回归通过。[协议补测 CI 44079019970](https://github.com/yuuolo/prism-phone/actions/runs/44079019970)（`48d7775`）双架构、Debug/Release、Lint、Rust 与 Android 17 十七项全通过；[最低系统兼容 CI 44081360304](https://github.com/yuuolo/prism-phone/actions/runs/44081360304)（`a36f221`）和[后台补测 CI 44081763967](https://github.com/yuuolo/prism-phone/actions/runs/44081763967)（`d0237f1`）均全部通过，含 API 26 与 Android 17 两端各十七项。最新页面和协议补测 CI 随后记录。
 
 - 默认关闭，显式选择并排列 2–4 个原始节点；独立于订阅合并池，保留手动节点选择、来源、收藏和路由。与自动优选互斥，不接收订阅中的嵌套组或 dialer-proxy。重复节点 ID、相同服务器/端口、非法协议参数及跳过证书校验明确拒绝；来源更新删除某一跳后拒绝连接，仍允许关闭链以恢复单节点。
 - 顺序从手机首跳到最终出口，使用现有六种基础协议的内核实现。HTTP 跳不支持 UDP 载体；后续 AnyTLS/Trojan/VLESS 的 UDP-over-TCP 可重新提供 UDP，SOCKS/Shadowsocks 需要前置 UDP 能力。无法承载时须明确关闭该链 UDP；不影响普通 DIRECT 规则的 UDP。页面显示配置链及实际运行状态，不将配置状态当作连通探测。
 - DNS 仅放行由固定协议节点组成的 relay，继续拒绝 DIRECT、内置策略或动态/嵌套组，保留真实 TLS 校验和代理失败不直连回退。物理局域网权限只检查首跳；连接详情展示全部跳的名称和原始标识，统计归属末跳，端口自环检查覆盖所有跳。
 - 验收同时发现并修复旧内核注册表的强引用环：改用弱引用，回归断言网络重建和停止后旧表真正释放。本机代理随机端口分配也增加有界分散重试，避免宿主保留端口段连续碰撞，不修改系统端口设置。
-- 本地 Rust 29 项及共享内核 102 项通过，覆盖真实 SOCKS/HTTP 两跳组合、三/四跳 TCP/UDP、VLESS-over-HTTP UDP、三种 Shadowsocks AEAD 经 SOCKS 的真实 TCP/UDP、IPv6 首跳前拒绝、TLS 证书拒绝、断连不回退、DNS 路径和注册表释放。安卓三项链专测通过，含真实两跳 DoH、网络重建、关闭首跳失败、配置修复和出口统计；本地 Android 编译/Lint、十七项完整回归通过并检查链路截图；CI 结果随后记录。测试用 adb reverse 只把回环端口接到固定公网 DoH 透明夹具，不替换 TLS 或 DNS 答案，不影响生产网络。扩展回归修正旧 AnyTLS 线缆测试对纯填充包漏计 7 字节帧头的断言，未更改协议行为。尚未验证全部六协议组合及真机后台/切网；用户当前无真机，继续软件验收，不发布 APK。
+- 本地 Rust 29 项及共享内核 104 项通过，覆盖真实 SOCKS/HTTP 两跳组合、三/四跳 TCP/UDP、VLESS-over-HTTP UDP、三种 Shadowsocks AEAD 经 SOCKS 的真实 TCP/UDP、IPv6 首跳前拒绝、TLS 证书拒绝、断连不回退、DNS 路径和注册表释放。安卓三项链专测通过，含真实两跳 DoH、网络重建、关闭首跳失败、配置修复和出口统计；本地 Android 编译/Lint、十七项完整回归通过并检查链路截图；CI 结果随后记录。测试用 adb reverse 只把回环端口接到固定公网 DoH 透明夹具，不替换 TLS 或 DNS 答案，不影响生产网络。扩展回归修正旧 AnyTLS 线缆测试对纯填充包漏计 7 字节帧头的断言，未更改协议行为。六类基础协议采用代表性组合验收，未穷举全部排列或使用真实商业节点账号，真机后台/切网仍待验证；用户当前无真机，继续软件验收，不发布 APK。
+
+代表性协议补测增加 `relay_tls_wire`：AnyTLS/Trojan 经 HTTP 和 SOCKS 前置的真实 TCP、UDP-over-TCP，校验认证与目标地址、返回载荷、逐跳元数据和前置流量。共享内核协议夹具沿用 `anytls_wire` 的自签 TLS 测试配置；该配置仅用于隔离回环测试，安卓仍明确拒绝跳过证书，严格证书失败另有手机策略测试，不把夹具当作真实账号节点。
 
 ### 广告域名拦截（未发布开发）
 
