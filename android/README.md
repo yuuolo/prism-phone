@@ -1,23 +1,23 @@
 # Prism Android
 
-独立原生 Kotlin 界面与 Android VpnService，内嵌 Rust prism-core。当前发布版本 [0.2.0-beta.2](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.2)，与桌面版本、设置、签名及更新渠道分开。当前为 Beta 验证阶段。
+独立原生 Kotlin 界面与 Android VpnService，内嵌 Rust prism-core。当前发布版本 [0.2.0-beta.3](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.3)，与桌面版本、设置、签名及更新渠道分开。当前为完整功能范围的 Beta 验证阶段，仍待真机验收。
 
 ## 范围
 
-以下列表描述已发布 Beta 的范围。未发布开发已接入真实连接/路由详情、日/月历史统计、DNS/TCP 检测、本机 HTTP/SOCKS5 服务、有序规则组、自动优选、订阅合并池、GeoIP/GeoSite 地区规则、广告域名拦截及显式有序链式代理，逐项验证记录见[完整版进度](../docs/android-full.md)；尚不代表完整版已发布。
+Beta.3 已交付真实连接/路由详情、日/月历史统计、DNS/TCP 检测、本机 HTTP/SOCKS5 TCP/UDP 与局域网共享、有序规则组、自动优选、订阅合并池、GeoIP/GeoSite 地区规则、广告域名拦截及显式有序链式代理。以下列出基础能力，完整功能与逐项验证记录见[完整版进度](../docs/android-full.md)；软件回归通过不替代稳定版真机验收。
 
 - 连接/断开、系统 VPN 授权、前台连接通知。
 - 连接页显示真实内核运行时间、实时速率、活跃连接数、当前规则策略和默认节点；仅前台采样，流量统计口径及验证状态见[完整版进度](../docs/android-full.md)。
 - 多个 HTTPS 订阅独立导入/更新和删除，粘贴配置与单节点添加；更新一个订阅不覆盖其他来源。
 - 节点搜索、协议筛选、名称/协议/收藏排序、收藏、选择和删除；按需测试当前节点。
-- 基础域名后缀/IPv4 CIDR 直连规则，受限的本地运行记录及复制。
+- 独立有序规则组与直连/拒绝/所选节点策略，受限的本地运行记录及复制。
 - 独立安卓升级通道，启动检查、系统每日后台检查、升级通知、手动下载和系统确认安装。
 - 紫色连接卡片、底部导航、分组列表、订阅卡片与独立更新页；适应系统边距和软键盘。
 - IPv4/IPv6 均路由进入 VPN；首版仅开放 IPv4 目标，IPv6 目标在内核拒绝，避免移除 IPv6 路由造成旁路。
 - DNS TCP/UDP 53 由内核处理，使用经所选节点的 DoH；代理服务器域名使用独立 IP 地址 DoH 引导，普通查询不回退系统 DNS。
 - 用户配置和订阅凭据使用 Android Keystore AES-GCM 加密，不参加系统备份；诊断事件有容量上限，不记录节点密钥和订阅 URL。
 
-首版允许基础 TCP/TLS AnyTLS、Shadowsocks、Trojan、VLESS、SOCKS5、HTTP 节点；禁用跳过证书校验、链式代理、指纹/Reality/Vision 和高级传输。不支持的节点会跳过并显示数量，不能用时明确报错。订阅只导入节点，不执行桌面规则、providers、覆写或脚本；手机规则由用户独立设置。
+允许基础 TCP/TLS AnyTLS、Shadowsocks、Trojan、VLESS、SOCKS5、HTTP 节点，以及显式选择的固定 2–4 跳链式代理；UDP 受各跳能力限制。禁用跳过证书校验、指纹/Reality/Vision 和高级传输。不支持的节点会跳过并显示数量，不能用时明确报错。订阅只导入节点，不执行桌面规则、providers、覆写或脚本；手机规则由用户独立设置。
 
 不包含 Tailscale、多内核下载、桌面服务、地图、应用流量统计、云同步和桌面看门狗。首版不启用系统常开 VPN，也不承诺进程被系统终止后的断网保护。
 
@@ -25,7 +25,7 @@
 
 所有 Rust TCP/UDP 出站 socket 在连接前调用 VpnService.protect，防止回环。Java 的普通应用请求仍进入 VPN；不全局排除自身 UID。手机系统管理底层网络，底层网络变化时有间隔限制地重建连接池/DNS，保留 VPN 描述符；不以流量空闲反复重启。
 
-未发布恢复修复使用有界的 3 秒合并窗口，保留窗口内最后一次变化；监听地址/DNS、能力与默认传输变化，旧服务回调不影响新会话。双模拟器已验证系统 Wi-Fi/蜂窝切换与真实两跳 TLS/DNS；Debug 测试权限不进入 Release，详见[验收记录](../docs/android-full.md)。
+Beta.3 的网络恢复使用有界的 3 秒合并窗口，保留窗口内最后一次变化；监听地址/DNS、能力与默认传输变化，旧服务回调不影响新会话。双模拟器已验证系统 Wi-Fi/蜂窝切换与真实两跳 TLS/DNS；Debug 测试权限不进入 Release，详见[验收记录](../docs/android-full.md)。
 
 用户断开和撤销 VPN 授权使旧连接请求失效；关闭 native runtime 后再释放 Java 的 TUN 描述符。后台不持续测速、不轮询连接列表、不持有无限保活任务。
 

@@ -2,10 +2,10 @@
 
 Prism 手机端独立仓库。当前交付 Android Beta，原生 Kotlin 界面、Android VpnService 和 Rust 内核。桌面端在 [yuuolo/prism](https://github.com/yuuolo/prism)。iOS/iPadOS 与 HarmonyOS NEXT 暂停开发。
 
-当前版本：[Android 0.2.0-beta.2](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.2)，新增真实内核仪表盘；[发布说明](docs/releases/android-0.2.0-beta.2.md)。沿用原签名，兼容 Beta.1 覆盖升级，尚非完整版或稳定版。
+当前版本：[Android 0.2.0-beta.3](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.3)，包含完整规划的 11 项功能；[发布说明](docs/releases/android-0.2.0-beta.3.md)。沿用原签名，兼容既有 Beta 覆盖升级。功能范围已交付为 Beta，真机验收尚未完成，仍非稳定版。
 
 - [Android 功能、构建和验证](android/README.md)
-- [完整版功能范围与验收标准](docs/android-full.md)：列明当前缺口，不代表功能已交付。
+- [完整版功能范围与验收标准](docs/android-full.md)：区分 Beta 已交付功能、软件验收与剩余真机条件。
 - [移动端平台边界](docs/mobile.md)
 - [迁移来源与升级兼容](docs/repository-migration.md)
 
