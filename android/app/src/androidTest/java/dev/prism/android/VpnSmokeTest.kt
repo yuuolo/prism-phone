@@ -134,8 +134,11 @@ class VpnSmokeTest {
                 dns(false); dns(true)
                 val systemDns=InetAddress.getAllByName("system-${System.nanoTime()}.android.invalid")
                 assertTrue("system DNS must use VPN fake-IP",systemDns.any { it.hostAddress?.startsWith("198.18.")==true })
-                http(); udp()
+                http()
                 networkDiagnostics()
+                // Inspect one echo-verified UDP association after the UI work;
+                // an OS rebuild may retire associations created before it.
+                udp()
                 assertTrue(socks.count.get()>0)
                 assertTrue("UDP must reach the proxy relay",socks.udpCount.get()>0)
                 val status=JSONObject(CoreBridge.status())
@@ -229,11 +232,6 @@ class VpnSmokeTest {
         device.findObject(By.text("返回连接")).click()
     }
     private fun connectionDetailsAndCancellation(session: String) {
-        // Network diagnostics above include UI work. A legitimate OS-triggered
-        // rebuild may retire that earlier UDP association during this interval.
-        // Create one fresh, echo-verified association before inspecting/closing
-        // the live row; do not retry or relax its payload/count assertions.
-        udp()
         val query=JSONObject().put("network","udp").put("route","proxy").put("search","203.0.113.7").toString()
         val page=JSONObject(CoreBridge.connections(query))
         assertEquals(session,page.getString("sessionId"))
