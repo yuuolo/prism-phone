@@ -1,10 +1,10 @@
-# 下一版启动、默认策略与路由改进（尚未发布）
+# Beta.4 启动、默认策略与路由改进
 
-本页记录 Beta.3 发布后的开发，不改变已发布 Beta.2/Beta.3 的二进制或版本号。
+本页记录 Beta.3 发布后的开发，已随 Beta.4 交付；不改变已发布 Beta.2/Beta.3 的二进制或版本号。
 
 ## 分发与兼容
 
-主发布继续使用 `yuuolo/prism-phone` 的 Android Release；Beta.3 APK 已在该仓库。发布脚本同时保留 `yuuolo/prism` 镜像及旧仓库专用更新清单，不删除旧资产、不把旧客户端不接受的地址替换进旧通道。新旧通道使用相同原签名 APK、版本、大小与摘要，各自指向各自仓库的下载地址；桌面 latest 不参与。下一次发布必须使用大于 4 的 versionCode。
+主发布继续使用 `yuuolo/prism-phone` 的 Android Release；Beta.4 APK 已在该仓库。发布脚本同时保留 `yuuolo/prism` 镜像及旧仓库专用更新清单，不删除旧资产、不把旧客户端不接受的地址替换进旧通道。新旧通道使用相同原签名 APK、版本、大小与摘要，各自指向各自仓库的下载地址；桌面 latest 不参与。Beta.4 使用 versionCode 5，后续版本继续递增。
 
 ## 首次数据准备
 
@@ -43,4 +43,6 @@ API 26 本机两项新增回归通过；通过 `MobileDefaultsTest#freshSetupDef
 
 另在隔离 API 26 模拟器清理测试安装数据后，不挂 instrumentation 从正常应用启动，观察到自动下载 GeoIP/GeoSite，完成后初始化入口消失，普通界面显示广告拦截开启、自动优选开启且候选不足时等待。两种路由界面截图已核对。证据位于忽略目录 `artifacts/mobile-next-acceptance/`、`artifacts/mobile-next-screenshots/`，临时宿主转发进程和 adb reverse 已清理。
 
-所有改动尚未发布；公开安装包仍为 Beta.3，未替换已有 APK 或修改既有升级通道。真机长时、耗电、无线切换及实际节点账号条件继续保留，iOS 与 HarmonyOS NEXT 继续暂停。
+2026-11-18 已发布 Beta.4（code 5），发布源码 `d28c3a4` 的[完整 CI 44317571741](https://github.com/yuuolo/prism-phone/actions/runs/44317571741)再次通过双系统各 20 项及各自 180 秒 Doze、双架构和所有发布检查。实际最终签名 APK 从真实 Beta.3 通过应用按钮、系统 Only this time 和 Update 确认升级，延续原 Beta.2 的 UID/Keystore/配置；正常补齐分类数据后再次校验通过，来源仍为 Ask every time。此项从已校验本地缓存开始，不冒充线上下载。最终 APK、摘要与新旧更新清单均回读核对，证据位于 `artifacts/android-release-44317571741/`。
+
+没有替换旧版本 APK；旧通道继续以兼容 URL 提供同一原签名新包。真机长时、耗电、无线切换及实际节点账号条件继续保留，iOS 与 HarmonyOS NEXT 继续暂停。

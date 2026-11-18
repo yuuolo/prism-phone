@@ -85,3 +85,9 @@ code 4/5 与对应辅助 APK、源文件/Gradle/APK 摘要分别保存在忽略�
 随后才安装原证书辅助 APK，显式执行 `phase=verify-online` 并得到 `upgradeAcceptance=passed-verify-online`。该阶段只读取缓存，要求真实 Beta.1、原证书、模拟器、Beta.2 的旧仓库 URL、已发布摘要 `6b27d0821a50d92b078b8bda258028b452d4c377f94f8f08a7877b3a2d77466f` 和大小 22,992,525 字节完全一致，再调用实际已安装旧客户端的 `Updates.verifyDownloaded` 复核包名、版本和签名；不写入元数据、不创建下载缓存、不执行安装。
 
 本地证据保存在忽略目录 `artifacts/online-upgrade-acceptance/`，包括初始安装版本、正常更新页/下载中/来源提示 XML、只读校验日志及结果。本次补齐的是**已发布 Beta.1→Beta.2 的真实线上检查与下载、旧地址兼容**；安装步骤由前文独立记录，不拼接成一次连续端到端安装。未发布完整版的未来更新清单与新高版本下载，以及 ARM64 真机仍待验收；没有新发布或修改线上资产。
+
+## Beta.4 实际发布包验收
+
+2026-11-18 在隔离 `PrismInstallerCI` 上以真实 Beta.2 准备原加密夹具，覆盖到真实已发布 Beta.3（code 4）保留 UID 和 Keystore。随后由 Beta.3 生产校验器准备实际待发布 Beta.4（code 5）缓存，经正常应用安装按钮、系统 Only this time 与 Update 确认安装；Beta.4 候选没有通过 adb 安装。安装后及正常补齐分类数据后两次 `passed-verify` 均通过，原凭据、来源/节点标识、收藏、选择及规则保留，相同版本不再被提示为可更新。来源设置显示实际 Beta.4 且 Ask every time 选中、Always allow 未选中，AppOps 未留下长期授权。
+
+该签名 APK 来自[发布 CI 44317571741](https://github.com/yuuolo/prism-phone/actions/runs/44317571741)，SHA-256 为 `71d1ef4867fadee2de7c8fd7c9293697aada5bb16af05729e72b8167e3a6948f`；发布时重新签署后的字节未变。新旧仓库的实际下载 APK、校验和及兼容更新清单均回读核对，发布流程未触及桌面 latest。此安装验证从已校验本地缓存开始，不冒充 Beta.3 在线检查/下载；真实 ARM64 设备仍待验收。证据位于忽略目录 `artifacts/android-release-44317571741/`，签名材料不上传。

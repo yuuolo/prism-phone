@@ -1,8 +1,10 @@
 # Prism Android
 
-独立原生 Kotlin 界面与 Android VpnService，内嵌 Rust prism-core。当前发布版本 [0.2.0-beta.3](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.3)，与桌面版本、设置、签名及更新渠道分开。当前为完整功能范围的 Beta 验证阶段，仍待真机验收。
+独立原生 Kotlin 界面与 Android VpnService，内嵌 Rust prism-core。当前发布版本 [0.2.0-beta.4](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.4)，与桌面版本、设置、签名及更新渠道分开。当前为完整功能范围的 Beta 验证阶段，仍待真机验收。
 
 ## 范围
+
+Beta.4 增加首次分类数据准备、新安装默认优选与广告拦截、默认 URL Test 候选池、规则／全局／直连三模式及 PC 常用规则导入，并修复快速重连的就绪误判。既有配置不被新默认值覆盖；三种模式保留独立广告策略和代理加密 DNS。实现及验收见[启动与默认策略](../docs/android-next-defaults.md)。
 
 Beta.3 已交付真实连接/路由详情、日/月历史统计、DNS/TCP 检测、本机 HTTP/SOCKS5 TCP/UDP 与局域网共享、有序规则组、自动优选、订阅合并池、GeoIP/GeoSite 地区规则、广告域名拦截及显式有序链式代理。以下列出基础能力，完整功能与逐项验证记录见[完整版进度](../docs/android-full.md)；软件回归通过不替代稳定版真机验收。
 

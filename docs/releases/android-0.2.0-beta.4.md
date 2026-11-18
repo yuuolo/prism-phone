@@ -13,4 +13,6 @@ Android Beta 更新，尚非稳定版。沿用原包名及签名，支持既有 
 
 发布须通过双架构 Debug/Release、双 Lint、32 项手机 Rust、101 项共享内核回归、7 项 Android 单元测试，以及 API 26 与 Android 17/16 KiB 各 20 项回归和各自独立 180 秒 Doze。首次真实数据下载、默认值及原证书高版本配置保留已有独立验收，证据边界见仓库文档。
 
+2026-11-18：[发布 CI 44317571741](https://github.com/yuuolo/prism-phone/actions/runs/44317571741)（源码 `d28c3a4`）全部通过。实际待发布签名 APK 经真实 Beta.3 的应用内安装按钮、系统 Only this time 与 Update 确认升级到 Beta.4；原 UID、Keystore、节点/凭据/来源/收藏/选择及规则验证通过，正常初始化分类数据后再次校验通过，来源仍为 Ask every time。此安装验收从已校验本地缓存开始，不冒充一次线上检查和下载。APK 大小 24,241,771 字节，SHA-256：`71d1ef4867fadee2de7c8fd7c9293697aada5bb16af05729e72b8167e3a6948f`。
+
 真机长时锁屏、耗电、无线/双栈切换、第二设备局域网共享、厂商系统及实际节点账号仍待验收。iOS/iPadOS 与 HarmonyOS NEXT 继续暂停。
