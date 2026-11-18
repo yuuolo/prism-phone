@@ -31,7 +31,7 @@ class AndroidFeaturesTest {
             context.getSharedPreferences("runtime-permissions",0).edit().clear().commit()
             reset(); ProfileStore(context).import(profile("LAN permission fixture",19090).replace("127.0.0.1","10.0.2.2"),false)
             instrumentation.uiAutomation.executeShellCommand("appops set ${context.packageName} ACTIVATE_VPN allow").use {fd -> java.io.FileInputStream(fd.fileDescriptor).use {it.readBytes()}}
-            context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+            TestSetup.configured(context);context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
             val device=UiDevice.getInstance(instrumentation)
             assertTrue(device.wait(Until.hasObject(By.clazz("android.widget.Button").text("连接")),5000))
             device.findObject(By.clazz("android.widget.Button").text("连接")).click()
@@ -137,7 +137,7 @@ class AndroidFeaturesTest {
         reset(); val store=ProfileStore(context)
         store.import(profile("Singapore Marina",11001)+"\n",false)
         store.import(profile("Japan Tokyo",11002),true)
-        context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        TestSetup.configured(context);context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         val device=UiDevice.getInstance(instrumentation)
         assertTrue(device.wait(Until.hasObject(By.desc("节点")),10000))
         val dir=File(context.getExternalFilesDir(null),"screenshots").apply {mkdirs()}

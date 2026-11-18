@@ -54,6 +54,8 @@ class ConnectionsActivity : Activity() {
         }
         root.addView(button("返回连接") {finish()})
         root.addView(label("连接与路由",24f))
+        val mode=runCatching {ProfileStore(this).load().optString("mode","rule")}.getOrDefault("rule")
+        root.addView(label("流量路由：${MobileDefaults.modeName(mode)}模式 · 下方显示实际命中规则与出口",13f))
         search=EditText(this).apply {
             hint="搜索目的地、规则或出站链"; isSingleLine=true
             filters=arrayOf(InputFilter.LengthFilter(200)); setText(saved?.getString("search","") ?: "")

@@ -94,7 +94,7 @@ class NetworkRecoveryTest {
             store.import("proxies: [{name: Recovery first, type: socks5, server: 10.0.2.2, port: 19092}, {name: Recovery exit, type: socks5, server: 127.0.0.1, port: 19090}]",false)
             val nodes=store.load().getJSONArray("nodes");val ids=(0 until nodes.length()).map{nodes.getJSONObject(it).getString("_id")}
             store.updateChain("{}",JSONObject().put("enabled",true).put("udpEnabled",false).put("hopIds",JSONArray(ids)))
-            context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            TestSetup.configured(context);context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             context.startForegroundService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT))
             waitFor("connected"){PrismVpnService.stage=="已连接"};val session=status().getString("sessionId");dns("example.com")
             // A final signal arriving in the three-second window must be

@@ -54,6 +54,24 @@ class ProfileStore(context: Context) {
         val decoded=String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)),Charsets.UTF_8)
         normalize(JSONObject(decoded)).also {if(it.toString()!=decoded) save(it)}
     }
+    fun initializeFreshInstall()=synchronized(lock) {
+        if(prefs.contains("profile")) {
+            val existing=load()
+            // Older releases have no startup marker. Fetch missing data once,
+            // while retaining every saved policy and explicit on/off choice.
+            if(!existing.has("geodata") && !existing.has("firstRunData")) save(existing.put("firstRunData",true))
+            return@synchronized
+        }
+        val state=load().put("mode","rule").put("firstRunData",true)
+            .put("automatic",MobileDefaults.automatic())
+            .put("adblock",JSONObject().put("enabled",true).put("exceptions",JSONArray()))
+            .put("routing",MobileDefaults.routing())
+        save(state)
+    }
+    fun updateMode(mode:String)=synchronized(lock) {
+        requireIdle();require(mode in MobileDefaults.modes)
+        save(load().put("mode",mode))
+    }
     private fun normalize(state: JSONObject): JSONObject {
         val nodes=state.getJSONArray("nodes")
         if(!state.has("subscriptions")) {
@@ -99,7 +117,7 @@ class ProfileStore(context: Context) {
         val selectedNode=nodes.getJSONObject(selected);val merged=pool?.aliases?.get(selectedNode.getString("_id"))
         require(chainEnabled || merged!=null) {"所选节点不在合并池中，请重新选择节点"}
         val sessionNode=JSONObject(selectedNode.toString()).put("name",if(merged==null) selectedNode.getString("name") else MergedNodes.display(merged))
-        val session=JSONObject().put("node",sessionNode).put("routing",profile.getJSONObject("routing"))
+        val session=JSONObject().put("node",sessionNode).put("routing",MobileDefaults.effectiveRouting(profile))
         profile.optJSONObject("geodata")?.let {session.put("geodata",it)}
         profile.optJSONObject("adblock")?.let {session.put("adblock",it)}
         val automatic=profile.optJSONObject("automatic")
@@ -114,8 +132,8 @@ class ProfileStore(context: Context) {
             }
             session.put("chain",JSONObject().put("hops",hops).put("udpEnabled",chain.getBoolean("udpEnabled")))
         }
-        if(automatic?.optBoolean("enabled")==true) {
-            val ids=automatic.getJSONArray("candidateIds");require(ids.length() in 2..16) {"自动优选须有 2–16 个候选节点"}
+        if(automatic?.optBoolean("enabled")==true && !(automatic.optBoolean("useDefaultCandidates") && MobileDefaults.candidates(profile,automatic).length()<2)) {
+            val ids=MobileDefaults.candidates(profile,automatic);require(ids.length() in 2..16) {"自动优选须有 2–16 个候选节点"}
             val candidates=JSONArray()
             val represented=mutableSetOf<String>()
             for(i in 0 until ids.length()) {
@@ -137,6 +155,7 @@ class ProfileStore(context: Context) {
         require(next.getLong("intervalSeconds") in 300..3600 && next.getLong("toleranceMs") in 0..2000) {"间隔须为 300–3600 秒，容差为 0–2000 毫秒"}
         state.put("automatic",next)
         if(!next.getBoolean("enabled")) {save(state);return@synchronized}
+        if(next.optBoolean("useDefaultCandidates") && state.getJSONArray("nodes").length()==0) {save(state);return@synchronized}
         val result=JSONObject(CoreBridge.validateSession(buildSession(state).toString()))
         require(!result.has("error")) {"自动优选候选、规则或节点配置无效"};save(state)
     }

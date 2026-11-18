@@ -17,6 +17,7 @@ class AutomaticActivity:Activity() {
     private lateinit var enabled:CheckBox
     private lateinit var interval:EditText
     private lateinit var tolerance:EditText
+    private lateinit var defaultCandidates:CheckBox
     private val chosen=linkedSetOf<String>()
     private var expected="{}"
     private var query=""
@@ -48,13 +49,19 @@ class AutomaticActivity:Activity() {
         root.addView(button("返回设置") {finish()});root.addView(text("自动优选",24f))
         root.addView(text("仅在 VPN 运行时探测 2–16 个候选。首轮约 1 秒后开始，此前使用首个候选；之后按间隔重测。当前节点失败或其他节点快于容差时切换，新连接使用新出口。全部失败时保留候选并报错，不回退直连。",13f))
         enabled=CheckBox(this).apply {text="启用自动优选";isChecked=config.optBoolean("enabled");contentDescription="启用自动优选"};root.addView(enabled)
+        root.addView(text("URL Test：${MobileDefaults.testUrl}\n默认：间隔 600 秒，切换容差 100 毫秒；使用当前合并池前 16 个不同节点，池更新时自动适配。不足 2 个时保留手动节点，不进行优选。",13f))
+        defaultCandidates=CheckBox(this).apply {text="自动使用默认候选池";contentDescription="默认优选候选池";isChecked=config.optBoolean("useDefaultCandidates")};root.addView(defaultCandidates)
         root.addView(text("探测间隔（秒，300–3600）",13f));interval=field("优选探测间隔",config.optLong("intervalSeconds",600).toString());root.addView(interval)
         root.addView(text("切换容差（毫秒，0–2000）",13f));tolerance=field("优选切换容差",config.optLong("toleranceMs",100).toString());root.addView(tolerance)
         root.addView(button("保存优选配置") {
             try {
-                val next=JSONObject().put("enabled",enabled.isChecked).put("candidateIds",JSONArray(chosen.toList())).put("intervalSeconds",interval.text.toString().toLong()).put("toleranceMs",tolerance.text.toString().toLong())
+                val next=JSONObject().put("enabled",enabled.isChecked).put("useDefaultCandidates",defaultCandidates.isChecked).put("candidateIds",JSONArray(chosen.toList())).put("intervalSeconds",interval.text.toString().toLong()).put("toleranceMs",tolerance.text.toString().toLong())
                 store.updateAutomatic(expected,next);expected=next.toString();Toast.makeText(this,"已保存，下次连接生效",Toast.LENGTH_LONG).show()
             } catch(e:Exception) {Toast.makeText(this,e.message ?: "配置无效",Toast.LENGTH_LONG).show()}
+        })
+        root.addView(button("恢复 URL Test 默认配置") {
+            enabled.isChecked=true;defaultCandidates.isChecked=true;interval.setText("600");tolerance.setText("100")
+            Toast.makeText(this,"已填入默认值，请保存优选配置",Toast.LENGTH_SHORT).show()
         })
         status=text("正在读取内核优选状态…");root.addView(status)
         val search=EditText(this).apply {hint="搜索候选节点";contentDescription="搜索候选节点";isSingleLine=true};root.addView(search)

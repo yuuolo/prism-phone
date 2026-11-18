@@ -29,6 +29,7 @@ class BackgroundSeedInstrumentation:Instrumentation() {
                 .put(JSONObject().put("kind","IP-CIDR").put("value","0.0.0.0/0").put("target","SELECTED").put("enabled",true).put("noResolve",true))
             val routing=JSONObject().put("version",1).put("defaultTarget","REJECT").put("groups",JSONArray().put(JSONObject().put("name","Background real DNS acceptance").put("enabled",true).put("rules",rules)))
             store.updateRouting(store.load().getJSONObject("routing").toString(),routing)
+            TestSetup.configured(targetContext)
             finish(Activity.RESULT_OK,Bundle().apply{putString("backgroundFixture","seeded-cold-dns-v1")})
         }catch(error:Throwable){finish(Activity.RESULT_CANCELED,Bundle().apply{putString("backgroundFixture","failed");putString("failureType",error.javaClass.simpleName)})}
     }

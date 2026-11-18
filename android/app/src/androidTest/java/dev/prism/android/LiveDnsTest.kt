@@ -30,7 +30,7 @@ class LiveDnsTest {
         val port=InstrumentationRegistry.getArguments().getString("dohSocksPort","19090").toInt()
         require(port in 1024..65535)
         ProfileStore(context).import("proxies: [{name: DoH verification, type: socks5, server: 10.0.2.2, port: $port}]",false)
-        context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        TestSetup.configured(context);context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         context.startForegroundService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT))
         try {
             await("已连接")

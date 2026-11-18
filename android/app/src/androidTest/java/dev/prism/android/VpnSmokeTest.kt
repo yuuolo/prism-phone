@@ -125,7 +125,7 @@ class VpnSmokeTest {
             store.save(data)
             assertFalse(context.getSharedPreferences("prism-mobile",0).getString("profile","")!!.contains("not-plaintext-fixture"))
             assertEquals("not-plaintext-fixture",store.load().getString("fixtureSecret"))
-            context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            TestSetup.configured(context);context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             instrumentation.waitForIdleSync(); Thread.sleep(500)
             context.startForegroundService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT))
             var previousSession=""

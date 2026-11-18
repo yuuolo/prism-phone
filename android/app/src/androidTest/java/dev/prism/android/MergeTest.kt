@@ -50,7 +50,7 @@ class MergeTest {
             val dir=File(context.getExternalFilesDir(null),"screenshots").apply {mkdirs()}
             Thread.sleep(3500);device.dumpWindowHierarchy(File(dir,"merged-pool.xml"));device.takeScreenshot(File(dir,"merged-pool.png"))
             // The connection spinner must expose only the derived pool and preserve an existing duplicate alias ID on render.
-            context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
+            TestSetup.configured(context);context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
             assertTrue(device.wait(Until.hasObject(By.desc("选择节点")),5000));device.findObject(By.desc("选择节点")).click()
             for(n in pool.nodes) assertTrue(device.wait(Until.hasObject(By.text(MergedNodes.display(n))),3000))
             assertFalse(device.hasObject(By.text("Duplicate renamed")));device.pressBack()

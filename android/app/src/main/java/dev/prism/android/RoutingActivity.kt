@@ -63,6 +63,20 @@ class RoutingActivity : Activity() {
         button("返回设置") {finish()};text("路由规则",24f)
         if(busy) {text("正在校验并保存规则…");return}
         text("组间、组内均从上到下首次命中。停用组或规则不参与匹配。修改后下次连接生效；默认仍为所选节点。")
+        val mode=store.load().optString("mode","rule")
+        button("流量路由：${MobileDefaults.modeName(mode)}模式") {
+            AlertDialog.Builder(this).setTitle("切换流量路由（先断开 VPN）")
+                .setItems(MobileDefaults.modes.map {MobileDefaults.modeName(it)}.toTypedArray()) {_,i ->
+                    try {store.updateMode(MobileDefaults.modes[i]);draw()} catch(e:Exception){Toast.makeText(this,e.message,Toast.LENGTH_LONG).show()}
+                }.show()
+        }
+        text("全局/直连忽略普通分流规则，保留广告拦截与代理加密 DNS；切回规则模式时原有规则仍保留。")
+        button("添加常用规则模板") {
+            AlertDialog.Builder(this).setTitle("追加模板，不覆盖原有规则顺序")
+                .setItems(arrayOf("局域网直连","局域网与国内直连（需地区数据）")) {_,which ->
+                    change {groups().put(MobileDefaults.routing(which==1).getJSONArray("groups").getJSONObject(0))}
+                }.show()
+        }
         if(PrismVpnService.stage in listOf("已连接","正在连接","正在断开")) text("VPN 运行中：请断开后修改。")
         button("默认出口：${routing.getString("defaultTarget")}") {
             AlertDialog.Builder(this).setTitle("未命中规则时的出口").setItems(targets.toTypedArray()) {_,i ->change {routing.put("defaultTarget",targets[i])}}.show()
@@ -122,14 +136,12 @@ class RoutingActivity : Activity() {
     }
     private fun importRules() {
         val input=EditText(this).apply {hint="DOMAIN-SUFFIX,example.com,DIRECT\nDST-PORT,443,SELECTED";minLines=5;maxLines=8;contentDescription="导入规则文本"}
-        val dialog=AlertDialog.Builder(this).setTitle("逐行导入规则").setMessage("每行 类型,参数,目标[,no-resolve]；# 为整行注释。全部校验成功才保存，最多 500 条。")
+        val dialog=AlertDialog.Builder(this).setTitle("逐行导入规则").setMessage("支持 PC 常用规则 CSV 与末尾 MATCH。PROXY、节点选择、自动选择映射到所选节点；其他自定义组须先改为手机策略。全部校验成功才保存，最多 500 条。")
             .setView(input).setNegativeButton("取消",null).setPositiveButton("导入",null).create()
         dialog.setOnShowListener {dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             try {
-                val result=JSONObject(CoreBridge.routing(JSONObject().put("action","import").put("text",input.text.toString()).toString()))
-                require(!result.has("error")) {result.optString("error")}
-                val incoming=result.getJSONArray("rules")
-                change({for(i in 0 until incoming.length()) rules().put(incoming.getJSONObject(i))}) {dialog.dismiss()}
+                val (incoming,fallback)=MobileDefaults.importRules(input.text.toString())
+                change({for(i in 0 until incoming.length()) rules().put(incoming.getJSONObject(i));if(fallback!=null)routing.put("defaultTarget",fallback)}) {dialog.dismiss()}
             } catch(e:Exception) {Toast.makeText(this,e.message ?: "导入失败",Toast.LENGTH_LONG).show()}
         }};dialog.show()
     }

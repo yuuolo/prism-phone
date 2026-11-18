@@ -40,6 +40,9 @@ class MainActivity : Activity() {
     private var hasConfiguredChain=false
     private var checkingUpdate = false
     private var darkCard = false
+    private var routeMode="rule"
+    private var initialDataRequired=false
+    private var initialDataStatus:TextView?=null
     private var progress: ProgressBar? = null
     private var nodeQuery=""
     private var nodeKind=""
@@ -99,7 +102,7 @@ class MainActivity : Activity() {
             main.post { busy=false; if (!isDestroyed) { message(result); render() } }
         }
     }
-    override fun onCreate(saved: Bundle?) { super.onCreate(saved); store=ProfileStore(this); tab=saved?.getInt("tab",0) ?: 0; if(intent.getBooleanExtra("updates",false)) tab=3; Updates.schedule(this); render() }
+    override fun onCreate(saved: Bundle?) { super.onCreate(saved); store=ProfileStore(this); store.initializeFreshInstall(); runCatching {FirstRunData.start(this)}; tab=saved?.getInt("tab",0) ?: 0; if(intent.getBooleanExtra("updates",false)) tab=3; Updates.schedule(this); render() }
     override fun onSaveInstanceState(out: Bundle) {out.putInt("tab",tab); super.onSaveInstanceState(out)}
     override fun onNewIntent(next: Intent) {super.onNewIntent(next); setIntent(next); if(next.getBooleanExtra("updates",false)) {tab=3; render()}}
     private fun render() {
@@ -124,6 +127,13 @@ class MainActivity : Activity() {
         brand.addView(TextView(this).apply {text="  PRISM"; textSize=20f; gravity=Gravity.CENTER_VERTICAL; letterSpacing=.12f; setTextColor(PrismStyle.ink); setTypeface(typeface,Typeface.BOLD)},LinearLayout.LayoutParams(0,dp(44),1f))
         brand.addView(TextView(this).apply {text="ANDROID"; textSize=10f; letterSpacing=.12f; setTextColor(PrismStyle.muted)})
         root.addView(brand)
+        initialDataRequired=runCatching {FirstRunData.needed(this)}.getOrDefault(false)
+        initialDataStatus=null
+        if(initialDataRequired) {
+            initialDataStatus=label(FirstRunData.status,13f)
+            button("重试初始化分类数据") {FirstRunData.start(this,true)}
+            button("查看地区与广告分类数据") {startActivity(Intent(this,GeoDataActivity::class.java))}
+        }
         progress=ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply {isIndeterminate=true; visibility=if(busy) View.VISIBLE else View.GONE}
         root.addView(progress,LinearLayout.LayoutParams(-1,dp(3)))
         Updates.cached(this)?.let {u -> button("发现新版本 ${u.version} · 查看更新") {tab=3; render()} }
@@ -142,11 +152,12 @@ class MainActivity : Activity() {
         when(tab) { 0 -> connectionPage(); 1 -> profilesPage(); 2 -> settingsPage(); else -> updatesPage() }
     }
     private fun connectionPage() {
+        val state=try {store.load()} catch (_: Exception) {label("无法读取加密配置，请检查本机存储后重新导入"); JSONObject().put("nodes",JSONArray())}
+        routeMode=state.optString("mode","rule")
         card(true) {
         label("PRISM VPN",11f).apply {letterSpacing=.16f; setTextColor(Color.rgb(197,182,235))}
         status=label(PrismVpnService.stage,28f)
         label("加密 DNS · 全设备接管",13f).setTextColor(Color.rgb(215,204,237))
-        val state=try {store.load()} catch (_: Exception) {label("无法读取加密配置，请检查本机存储后重新导入"); JSONObject().put("nodes",JSONArray())}
         val pool=MergedNodes.pool(state);val choices=pool.nodes;nodeCount=choices.size
         hasConfiguredChain=state.optJSONObject("chain")?.optBoolean("enabled")==true
         val selectedId=state.getJSONArray("nodes").optJSONObject(state.optInt("selected"))?.optString("_id")
@@ -182,9 +193,21 @@ class MainActivity : Activity() {
         card {
             label("实时概况",19f)
             dashboard=label("内核未运行",14f)
-            button("查看连接与路由") {startActivity(Intent(this,ConnectionsActivity::class.java))}
-            button("流量历史") {startActivity(Intent(this,TrafficHistoryActivity::class.java))}
-            label("速率为相邻采样间的平均值。累计仅含本次 VPN 会话的 TCP/UDP 转发载荷（含直连和本机代理服务），不含协议开销和内核 DNS 查询；断开后重置。",12f)
+            actions("查看连接与路由" to {startActivity(Intent(this,ConnectionsActivity::class.java))},
+                "流量历史" to {startActivity(Intent(this,TrafficHistoryActivity::class.java))})
+            label("速率为相邻采样平均值；累计仅含本次 VPN 的 TCP/UDP 转发载荷，不含协议开销与内核 DNS。日/月与跨会话累计见流量历史。",12f)
+        }
+        card {
+            label("流量路由 · ${MobileDefaults.modeName(routeMode)}模式",19f)
+            actions(*MobileDefaults.modes.map {mode ->MobileDefaults.modeName(mode) to {
+                if(editable()) runTask {store.updateMode(mode);"已切换到${MobileDefaults.modeName(mode)}模式"}
+            }}.toTypedArray())
+            label("规则：按顺序分流；全局：全部使用代理；直连：普通流量直接连接。广告拦截与代理加密 DNS 独立保留。修改须先断开。",12f)
+            button("编辑路由规则与模板") {startActivity(Intent(this,RoutingActivity::class.java))}
+            val automatic=state.optJSONObject("automatic")
+            val count=automatic?.let {MobileDefaults.candidates(state,it).length()} ?: 0
+            label("自动优选："+if(automatic?.optBoolean("enabled")==true) {if(count<2) "已开启，等待至少 2 个候选节点" else "$count 个候选 · URL Test"} else "关闭",13f)
+            label("广告拦截："+if(state.optJSONObject("adblock")?.optBoolean("enabled")==true) "开启" else "关闭",13f)
         }
         card {
         label("连接质量",19f)
@@ -204,6 +227,7 @@ class MainActivity : Activity() {
     }
     private fun requestVpnConnection() {
         if(!idle() || busy) return
+        if(FirstRunData.needed(this)) {message("请先完成地区与广告分类数据初始化");FirstRunData.start(this,true);return}
         val local=runCatching {
             ProfileStore.sessionServers(JSONObject(store.session())).any {LocalNetworkAccess.needsPermission(this,it)}
         }.getOrElse {message("节点选择或候选池不可用，请检查节点、优选与合并设置"); return}
@@ -225,6 +249,10 @@ class MainActivity : Activity() {
     @Deprecated("Platform callback")
     override fun onActivityResult(request: Int, result: Int, data: Intent?) { super.onActivityResult(request,result,data); if(request==100 && result==RESULT_OK) startVpn() }
     private fun updateStatus() {
+        if(initialDataRequired) {
+            initialDataStatus?.text=FirstRunData.status
+            if(!FirstRunData.needed(this)) {initialDataRequired=false;render();return}
+        }
         progress?.visibility=if(busy || checkingUpdate) View.VISIBLE else View.GONE
         val stage=PrismVpnService.stage
         val connected=stage=="已连接" && lastStage!=stage
@@ -268,7 +296,7 @@ class MainActivity : Activity() {
                 val seconds=stats.getLong("uptimeMs")/1000
                 counters?.text="本次累计 ↑ ${formatBytes(upload)}    ↓ ${formatBytes(download)}"
                 val defaultTarget=when(stats.getString("defaultTarget")) {"DIRECT"->"直连";"REJECT"->"拒绝";else->stats.getString("nodeName")}
-                dashboard?.text="内核运行中 · %02d:%02d:%02d\n%s\n活跃连接 %d\n策略：规则分流 · %d 条启用规则\n默认出口：%s".format(
+                dashboard?.text="内核运行中 · %02d:%02d:%02d\n%s\n活跃连接 %d\n策略：${MobileDefaults.modeName(routeMode)}模式 · %d 条启用规则\n当前出口：%s".format(
                     seconds/3600,seconds/60%60,seconds%60,speed,stats.getInt("connections"),stats.getInt("activeRules"),defaultTarget)
                 if(!stats.optBoolean("geodataValid",true)) dashboard?.append("\n地区数据校验失败，保留旧路由；请断开后更新地区数据。")
             }
@@ -473,7 +501,7 @@ class MainActivity : Activity() {
         resumed=true
         if(tab in 0..2) render()
         main.post(tick)
-        if(Updates.enabled(this) && Updates.due(this)) checkUpdates(true)
+        if(!initialDataRequired && Updates.enabled(this) && Updates.due(this)) checkUpdates(true)
         Updates.cached(this)?.let {Updates.notify(this,it)}
     }
     override fun onPause() { resumed=false; statsEpoch++; trafficRates.reset(); main.removeCallbacks(tick); super.onPause() }

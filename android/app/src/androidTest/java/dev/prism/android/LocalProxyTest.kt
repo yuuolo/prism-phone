@@ -94,7 +94,7 @@ class LocalProxyTest {
         if(Build.VERSION.SDK_INT>=33) shell("pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS")
         VpnSmokeTest.Socks().use {socks ->
             ProfileStore(context).import("proxies: [{name: proxy fixture, type: socks5, server: 127.0.0.1, port: ${socks.listener.localPort}}]",false)
-            context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            TestSetup.configured(context);context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             context.startForegroundService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT))
             try {
                 await("已连接")
