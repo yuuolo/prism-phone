@@ -98,10 +98,11 @@ class VpnSmokeTest {
             fakeIp(result.data.copyOf(result.length))
         }
     }
-    private fun http() {Socket().use {s ->
+    private fun http() {val before=CoreBridge.status();Socket().use {s ->
         s.soTimeout=5000; s.connect(InetSocketAddress("203.0.113.7",80),5000)
         s.getOutputStream().write("GET / HTTP/1.1\r\nHost: mobile-test.invalid\r\nConnection: close\r\n\r\n".toByteArray())
-        assertTrue(s.getInputStream().readBytes().toString(Charsets.UTF_8).endsWith("OK"))
+        val reply=s.getInputStream().readBytes().toString(Charsets.UTF_8)
+        assertTrue("HTTP source=${s.localAddress.hostAddress} bytes=${reply.length}; before=$before; after=${CoreBridge.status()}; service=${PrismVpnService.logs().take(8)}",reply.endsWith("OK"))
     }}
     private fun udp() {DatagramSocket().use {s ->
         s.soTimeout=5000

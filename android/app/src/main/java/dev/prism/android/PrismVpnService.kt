@@ -154,10 +154,16 @@ class PrismVpnService : VpnService() {
                 val query=bytes.toByteArray()
                 val ready=runCatching {java.net.DatagramSocket().use {socket ->
                     socket.soTimeout=500
+                    socket.connect(java.net.InetAddress.getByName("172.19.0.2"),53)
+                    if(socket.localAddress.hostAddress!="172.19.0.1") return@use false
+                    fun counts():VpnRouteProof.Counts {
+                        val state=JSONObject(CoreBridge.status())
+                        return VpnRouteProof.Counts(state.getString("sessionId"),state.getLong("tunReceived"),state.getLong("tunSent"))
+                    }
+                    val before=counts()
                     socket.send(java.net.DatagramPacket(query,query.size,java.net.InetAddress.getByName("172.19.0.2"),53))
                     val answer=java.net.DatagramPacket(ByteArray(4096),4096); socket.receive(answer)
-                    answer.length>=16 && answer.data[0]==query[0] && answer.data[1]==query[1] &&
-                        (answer.data[answer.length-4].toInt() and 255)==198 && (answer.data[answer.length-3].toInt() and 255)==18
+                    VpnRouteProof.accepts(socket.localAddress.hostAddress ?: "",before,counts(),query,answer.data.copyOf(answer.length))
                 }}.getOrDefault(false)
                 if(ready) return
             }
