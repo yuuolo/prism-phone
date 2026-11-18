@@ -229,6 +229,11 @@ class VpnSmokeTest {
         device.findObject(By.text("返回连接")).click()
     }
     private fun connectionDetailsAndCancellation(session: String) {
+        // Network diagnostics above include UI work. A legitimate OS-triggered
+        // rebuild may retire that earlier UDP association during this interval.
+        // Create one fresh, echo-verified association before inspecting/closing
+        // the live row; do not retry or relax its payload/count assertions.
+        udp()
         val query=JSONObject().put("network","udp").put("route","proxy").put("search","203.0.113.7").toString()
         val page=JSONObject(CoreBridge.connections(query))
         assertEquals(session,page.getString("sessionId"))
