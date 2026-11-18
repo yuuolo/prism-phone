@@ -32,6 +32,18 @@ class SignedUpgradeInstrumentation:Instrumentation() {
             val store=ProfileStore(context)
             val proof=context.getSharedPreferences("signed-upgrade-acceptance",0)
             when(phase) {
+                "verify-online"->{
+                    check(android.os.Build.HARDWARE in listOf("ranchu","goldfish"))
+                    check(installed.versionCode==2 && installed.versionName=="0.2.0-beta.1")
+                    val update=checkNotNull(Updates.cached(context))
+                    check(update.code==3L && update.version=="0.2.0-beta.2")
+                    check(update.url=="https://github.com/yuuolo/prism/releases/download/android-v0.2.0-beta.2/Prism-Android-0.2.0-beta.2.apk")
+                    check(update.hash=="6b27d0821a50d92b078b8bda258028b452d4c377f94f8f08a7877b3a2d77466f" && update.size==22992525L)
+                    check(Updates.downloaded(context,update))
+                    Updates.verifyDownloaded(context,Updates.apk(context),update)
+                    // Read-only proof of the actual published client's normal
+                    // network check/download. Never seeds metadata or a cache.
+                }
                 "prepare"->{
                     check(installed.versionCode==3)
                     check(installed.versionName=="0.2.0-beta.2")
@@ -88,7 +100,7 @@ class SignedUpgradeInstrumentation:Instrumentation() {
                     }
                     context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK));waitForIdleSync()
                 }
-                else->error("phase must be prepare, stage-install or verify")
+                else->error("phase must be prepare, stage-install, verify or verify-online")
             }
             finish(Activity.RESULT_OK,Bundle().apply {putString("upgradeAcceptance","passed-$phase")})
         }catch(error:Throwable){finish(Activity.RESULT_CANCELED,Bundle().apply {putString("upgradeAcceptance","failed-$phase");putString("failureType",error.javaClass.simpleName)})}
