@@ -102,7 +102,7 @@ class MainActivity : Activity() {
             main.post { busy=false; if (!isDestroyed) { message(result); render() } }
         }
     }
-    override fun onCreate(saved: Bundle?) { super.onCreate(saved); store=ProfileStore(this); store.initializeFreshInstall(); runCatching {FirstRunData.start(this)}; tab=saved?.getInt("tab",0) ?: 0; if(intent.getBooleanExtra("updates",false)) tab=3; Updates.schedule(this); render() }
+    override fun onCreate(saved: Bundle?) { super.onCreate(saved); store=ProfileStore(this); runCatching {store.initializeFreshInstall();FirstRunData.start(this)}; tab=saved?.getInt("tab",0) ?: 0; if(intent.getBooleanExtra("updates",false)) tab=3; Updates.schedule(this); render() }
     override fun onSaveInstanceState(out: Bundle) {out.putInt("tab",tab); super.onSaveInstanceState(out)}
     override fun onNewIntent(next: Intent) {super.onNewIntent(next); setIntent(next); if(next.getBooleanExtra("updates",false)) {tab=3; render()}}
     private fun render() {
