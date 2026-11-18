@@ -20,14 +20,21 @@ pub struct DelayRecord {
 }
 
 #[derive(Default)]
+struct NodeHealth {
+    history: VecDeque<DelayRecord>,
+    inherited_alive: Option<bool>,
+}
+#[derive(Default)]
 pub struct DelayStore {
-    map: Mutex<HashMap<String, VecDeque<DelayRecord>>>,
+    map: Mutex<HashMap<String, NodeHealth>>,
 }
 
 impl DelayStore {
     pub fn record(&self, name: &str, delay: u16) {
         let mut m = self.map.lock().unwrap();
-        let h = m.entry(name.to_string()).or_default();
+        let state = m.entry(name.to_string()).or_default();
+        state.inherited_alive=None;
+        let h=&mut state.history;
         h.push_back(DelayRecord { time: Utc::now(), delay });
         while h.len() > 10 {
             h.pop_front();
@@ -35,16 +42,26 @@ impl DelayStore {
     }
 
     pub fn history(&self, name: &str) -> Vec<DelayRecord> {
-        self.map.lock().unwrap().get(name).map(|h| h.iter().cloned().collect()).unwrap_or_default()
+        self.map.lock().unwrap().get(name).map(|h| h.history.iter().cloned().collect()).unwrap_or_default()
     }
 
     pub fn last(&self, name: &str) -> Option<u16> {
-        self.map.lock().unwrap().get(name).and_then(|h| h.back()).map(|r| r.delay)
+        self.map.lock().unwrap().get(name).and_then(|h| h.history.back()).map(|r| r.delay)
+    }
+
+    /// Preserve routing availability while a deferred mobile recheck is pending,
+    /// without inventing a fresh delay sample or timestamp.
+    pub fn inherit_alive(&self,name:&str,alive:bool) {
+        let mut map=self.map.lock().unwrap();let state=map.entry(name.to_owned()).or_default();
+        if state.history.is_empty() {state.inherited_alive=Some(alive);}
+    }
+    pub fn known_alive(&self,name:&str)->Option<bool> {
+        self.map.lock().unwrap().get(name).and_then(|s|s.history.back().map(|r|r.delay!=0).or(s.inherited_alive))
     }
 
     /// Untested proxies count as alive.
     pub fn alive(&self, name: &str) -> bool {
-        self.last(name) != Some(0)
+        self.known_alive(name).unwrap_or(true)
     }
 }
 

@@ -101,6 +101,18 @@ impl Hub {
             let (Some(o), Some(n)) = (old.tunnel.reg.get(name), new.tunnel.reg.get(name)) else { continue };
             if let (Some(og), Some(ng)) = (o.as_group(), n.as_group()) {
                 ng.restore_selection(&og.now());
+                // A mobile network rebuild defers probes. Preserve only known
+                // availability of unchanged nodes under the same probe policy;
+                // history stays empty, so old samples are not presented as new.
+                if ng.cfg.health_initial_delay>1 && ng.cfg.kind==og.cfg.kind && ng.cfg.url==og.cfg.url && ng.cfg.proxies==og.cfg.proxies {
+                    for member in &ng.cfg.proxies {
+                        let same=match(old.tunnel.reg.configs.get(member),new.tunnel.reg.configs.get(member)) {
+                            (Some(a),Some(b))=>matches!((serde_json::to_value(a),serde_json::to_value(b)),(Ok(a),Ok(b)) if a==b),
+                            _=>false,
+                        };
+                        if same {if let Some(alive)=old.tunnel.reg.delays.known_alive(member) {new.tunnel.reg.delays.inherit_alive(member,alive);}}
+                    }
+                }
             }
         }
         for w in &new.warnings {

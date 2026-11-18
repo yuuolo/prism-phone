@@ -206,7 +206,8 @@ class MainActivity : Activity() {
             button("编辑路由规则与模板") {startActivity(Intent(this,RoutingActivity::class.java))}
             val automatic=state.optJSONObject("automatic")
             val count=automatic?.let {MobileDefaults.candidates(state,it).length()} ?: 0
-            label("自动优选："+if(automatic?.optBoolean("enabled")==true) {if(count<2) "已开启，等待至少 2 个候选节点" else "$count 个候选 · URL Test"} else "关闭",13f)
+            val policyName=when(automatic?.optString("policy","url-test")){"fallback"->"故障转移";"load-balance"->"按目标负载均衡";else->"URL Test"}
+            label("自动优选："+if(automatic?.optBoolean("enabled")==true) {if(count<2) "已开启，等待至少 2 个候选节点" else "$count 个候选 · $policyName"} else "关闭",13f)
             label("广告拦截："+if(state.optJSONObject("adblock")?.optBoolean("enabled")==true) "开启" else "关闭",13f)
         }
         card {

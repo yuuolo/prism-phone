@@ -48,6 +48,12 @@ struct Running {
 }
 static ENGINE: Mutex<Option<Running>> = Mutex::new(None);
 fn current_node_name(r: &Running) -> String {
+    if r.automatic
+        .as_ref()
+        .is_some_and(|p| p.policy == crate::automatic::Policy::LoadBalance)
+    {
+        return "按目标负载均衡".into();
+    }
     if let Some(chain) = &r.chain {
         return chain
             .hops
@@ -81,7 +87,15 @@ fn node_labels(r: &Running) -> std::collections::HashMap<String, String> {
         }
     }
     if let Some(plan) = &r.automatic {
-        labels.insert("手机节点".into(), "自动优选".into());
+        labels.insert(
+            "手机节点".into(),
+            match plan.policy {
+                crate::automatic::Policy::UrlTest => "自动优选",
+                crate::automatic::Policy::Fallback => "故障转移",
+                crate::automatic::Policy::LoadBalance => "按目标负载均衡",
+            }
+            .into(),
+        );
         for c in &plan.candidates {
             labels.insert(crate::automatic::name(&c.id), c.node.name.clone());
         }

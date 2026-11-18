@@ -12,6 +12,17 @@ fn interval() -> u64 {
 fn tolerance() -> u64 {
     100
 }
+fn test_url() -> String {
+    TEST_URL.into()
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Policy {
+    #[default]
+    UrlTest,
+    Fallback,
+    LoadBalance,
+}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Candidate {
@@ -22,6 +33,10 @@ pub struct Candidate {
 #[serde(deny_unknown_fields)]
 pub struct Plan {
     pub candidates: Vec<Candidate>,
+    #[serde(default)]
+    pub policy: Policy,
+    #[serde(default = "test_url", rename = "testUrl")]
+    pub test_url: String,
     #[serde(default = "interval", rename = "intervalSeconds")]
     pub interval: u64,
     #[serde(default = "tolerance", rename = "toleranceMs")]
@@ -54,9 +69,43 @@ impl Plan {
             serde_json::json!({"id":c.id,"name":c.node.name,"selected":name(&c.id)==current,
                 "delayMs":last.as_ref().map(|r|r.delay),"testedAt":last.map(|r|r.time.to_rfc3339())})
         }).collect();
-        serde_json::json!({"enabled":true,"intervalSeconds":self.interval,"toleranceMs":self.tolerance,"candidates":candidates})
+        let candidates = if self.policy == Policy::LoadBalance {
+            candidates
+                .into_iter()
+                .map(|mut c| {
+                    c["selected"] = false.into();
+                    c
+                })
+                .collect()
+        } else {
+            candidates
+        };
+        serde_json::json!({"enabled":true,"policy":self.policy,"testUrl":self.test_url,"intervalSeconds":self.interval,"toleranceMs":self.tolerance,"candidates":candidates})
     }
     pub fn validate(&self) -> Result<()> {
+        ensure!(
+            self.test_url.len() <= 2048
+                && !self
+                    .test_url
+                    .bytes()
+                    .any(|b| b.is_ascii_whitespace() || b.is_ascii_control()),
+            "检测地址过长或包含空白字符"
+        );
+        let url =
+            url::Url::parse(&self.test_url).map_err(|_| anyhow::anyhow!("检测地址格式无效"))?;
+        ensure!(
+            url.scheme() == "https"
+                && url.host_str().is_some()
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.query().is_none()
+                && url.fragment().is_none(),
+            "检测地址须为不含账号、查询参数或片段的 HTTPS URL"
+        );
+        ensure!(
+            url.port() != Some(0) && !matches!(url.host(), Some(url::Host::Ipv6(_))),
+            "当前检测地址不支持零端口或 IPv6 目标"
+        );
         ensure!(
             (2..=16).contains(&self.candidates.len()),
             "自动优选须有 2–16 个候选节点"
@@ -96,10 +145,14 @@ impl Plan {
             .collect();
         let mut group = GroupConfig::new(
             GROUP,
-            GroupKind::UrlTest,
+            match self.policy {
+                Policy::UrlTest => GroupKind::UrlTest,
+                Policy::Fallback => GroupKind::Fallback,
+                Policy::LoadBalance => GroupKind::LoadBalance,
+            },
             self.candidates.iter().map(|c| name(&c.id)).collect(),
         );
-        group.url = TEST_URL.into();
+        group.url = self.test_url.clone();
         group.interval = self.interval;
         group.tolerance = self.tolerance;
         profile.groups = vec![group];
@@ -137,6 +190,8 @@ mod tests {
     #[test]
     fn rejects_unbounded_or_unsafe_plans() {
         let good = Plan {
+            policy: Policy::UrlTest,
+            test_url: test_url(),
             candidates: vec![candidate("a", 10001), candidate("b", 10002)],
             interval: 600,
             tolerance: 100,
@@ -157,6 +212,34 @@ mod tests {
         let mut bad = good;
         bad.candidates[0].id = "a,DIRECT".into();
         assert!(bad.validate().is_err());
+    }
+    #[test]
+    fn legacy_plan_defaults_and_explicit_https_probe_policy() {
+        let old = serde_json::json!({"candidates":[candidate("a",12001),candidate("b",12002)],"intervalSeconds":600,"toleranceMs":100});
+        let mut plan: Plan = serde_json::from_value(old.clone()).unwrap();
+        assert_eq!(plan.policy, Policy::UrlTest);
+        assert_eq!(plan.test_url, TEST_URL);
+        plan.policy = Policy::Fallback;
+        plan.test_url = "https://www.gstatic.com/generate_204".into();
+        let mut p = Profile::default();
+        plan.apply(&mut p).unwrap();
+        assert_eq!(p.groups[0].kind, GroupKind::Fallback);
+        assert_eq!(p.groups[0].url, plan.test_url);
+        for bad in [
+            "http://test.invalid/",
+            "https://user:secret@test.invalid/",
+            "https://test.invalid/?token=secret",
+            "https://test.invalid/#fragment",
+            "https://[::1]/",
+            "https://test.invalid:0/",
+            "https://test.invalid/\n",
+        ] {
+            plan.test_url = bad.into();
+            assert!(plan.validate().is_err(), "bad test URL accepted");
+        }
+        let mut unknown = old;
+        unknown["policy"] = "unknown".into();
+        assert!(serde_json::from_value::<Plan>(unknown).is_err());
     }
     struct Fixture {
         port: u16,
@@ -221,6 +304,8 @@ mod tests {
         let a = fixture(40).await;
         let b = fixture(1).await;
         let plan = Plan {
+            policy: Policy::UrlTest,
+            test_url: test_url(),
             candidates: vec![candidate("a", a.port), candidate("b", b.port)],
             interval: 600,
             tolerance: 100,
@@ -274,5 +359,104 @@ mod tests {
         group.health_check().await;
         assert_eq!(group.now(), name("a"));
         core.shutdown.cancel();
+    }
+    #[tokio::test]
+    async fn fallback_and_sticky_balance_forward_and_preserve_availability_on_network_rebuild() {
+        for policy in [Policy::Fallback, Policy::LoadBalance] {
+            let a = fixture(40).await;
+            let b = fixture(1).await;
+            let plan = Plan {
+                candidates: vec![candidate("a", a.port), candidate("b", b.port)],
+                policy,
+                test_url: test_url(),
+                interval: 600,
+                tolerance: 0,
+            };
+            let mut p = Profile::default();
+            plan.apply(&mut p).unwrap();
+            // Only the loopback wire fixture uses HTTP; production plans require HTTPS.
+            p.groups[0].url = "http://health.test/generate_204".into();
+            p.groups[0].health_initial_delay = 300;
+            let raw = serde_yaml::to_string(&prism_core::config::clash::emit(&p)).unwrap();
+            let hub = Hub::new(Default::default(), ".".into(), p).await.unwrap();
+            let core = hub.core();
+            let group = core.tunnel.reg.get(GROUP).unwrap();
+            group.as_group().unwrap().health_check().await;
+            if policy == Policy::Fallback {
+                assert_eq!(group.as_group().unwrap().now(), name("a"));
+            }
+            let mut exits = HashSet::new();
+            for i in 0..32 {
+                let target = Address::Domain(format!("payload{i}.test"), 80);
+                let (_, chain) = core.tunnel.reg.resolve(GROUP, &target).unwrap();
+                assert_eq!(chain, core.tunnel.reg.resolve(GROUP, &target).unwrap().1);
+                exits.insert(chain.last().unwrap().clone());
+            }
+            assert_eq!(
+                exits.len(),
+                if policy == Policy::LoadBalance { 2 } else { 1 }
+            );
+            a.fail.store(true, Ordering::Relaxed);
+            group.as_group().unwrap().health_check().await;
+            let target = Address::Domain("health.test".into(), 80);
+            assert_eq!(
+                core.tunnel
+                    .reg
+                    .resolve(GROUP, &target)
+                    .unwrap()
+                    .1
+                    .last()
+                    .unwrap(),
+                &name("b")
+            );
+            let mut stream = group.connect(&target).await.unwrap();
+            stream
+                .write_all(
+                    b"GET /payload HTTP/1.1\r\nHost: health.test\r\nConnection: close\r\n\r\n",
+                )
+                .await
+                .unwrap();
+            let mut reply = Vec::new();
+            stream.read_to_end(&mut reply).await.unwrap();
+            assert!(reply.starts_with(b"HTTP/1.1 204"));
+            b.fail.store(true, Ordering::Relaxed);
+            group.as_group().unwrap().health_check().await;
+            let (_, chain) = core.tunnel.reg.resolve(GROUP, &target).unwrap();
+            assert!(chain.last().unwrap().starts_with("候选."));
+            assert!(group.connect(&target).await.is_err());
+            b.fail.store(false, Ordering::Relaxed);
+            group.as_group().unwrap().health_check().await;
+            hub.reload(Some(raw.clone())).await.unwrap();
+            let rebuilt = hub.core();
+            assert!(rebuilt.tunnel.reg.delays.history(&name("a")).is_empty());
+            assert_eq!(
+                rebuilt
+                    .tunnel
+                    .reg
+                    .resolve(GROUP, &target)
+                    .unwrap()
+                    .1
+                    .last()
+                    .unwrap(),
+                &name("b")
+            );
+            assert_eq!(
+                rebuilt.tunnel.reg.delays.known_alive(&name("a")),
+                Some(false)
+            );
+            // Repeated rebuilds keep availability but never fabricate a delay sample.
+            hub.reload(Some(raw.clone())).await.unwrap();
+            assert_eq!(
+                hub.core().tunnel.reg.delays.known_alive(&name("a")),
+                Some(false)
+            );
+            let mut changed = prism_core::config::parse_any(&raw).unwrap();
+            changed.proxies[0].port = 12099;
+            let changed =
+                serde_yaml::to_string(&prism_core::config::clash::emit(&changed)).unwrap();
+            hub.reload(Some(changed)).await.unwrap();
+            assert_eq!(hub.core().tunnel.reg.delays.known_alive(&name("a")), None);
+            hub.core().shutdown.cancel();
+        }
     }
 }

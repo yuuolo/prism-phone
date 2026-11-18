@@ -144,7 +144,8 @@ class ProfileStore(context: Context) {
                 require(represented.add(entry.getString("_id"))) {"自动优选候选经合并后重复，请重新配置"}
                 candidates.put(JSONObject().put("id",id).put("node",JSONObject(node.toString()).put("name",MergedNodes.display(entry))))
             }
-            session.put("automatic",JSONObject().put("candidates",candidates).put("intervalSeconds",automatic.getLong("intervalSeconds")).put("toleranceMs",automatic.getLong("toleranceMs")))
+            session.put("automatic",JSONObject().put("candidates",candidates).put("intervalSeconds",automatic.getLong("intervalSeconds")).put("toleranceMs",automatic.getLong("toleranceMs"))
+                .put("policy",automatic.optString("policy","url-test")).put("testUrl",automatic.optString("testUrl",MobileDefaults.testUrl)))
         }
         return session
     }
@@ -153,6 +154,10 @@ class ProfileStore(context: Context) {
         check((state.optJSONObject("automatic")?.toString() ?: "{}")==expected) {"自动优选配置已变化，请重新打开后修改"}
         require(next.getJSONArray("candidateIds").length()<=16) {"最多 16 个候选节点"}
         require(next.getLong("intervalSeconds") in 300..3600 && next.getLong("toleranceMs") in 0..2000) {"间隔须为 300–3600 秒，容差为 0–2000 毫秒"}
+        require(next.optString("policy","url-test") in listOf("url-test","fallback","load-balance")) {"候选组策略无效"}
+        val testUrl=next.optString("testUrl",MobileDefaults.testUrl)
+        val uri=java.net.URI(testUrl)
+        require(testUrl.toByteArray(Charsets.UTF_8).size<=2048 && testUrl.none {it.isWhitespace() || it.isISOControl()} && uri.scheme=="https" && !uri.host.isNullOrEmpty() && !uri.host.contains(':') && uri.rawUserInfo==null && uri.rawQuery==null && uri.rawFragment==null && (uri.port==-1 || uri.port in 1..65535)) {"检测地址须为不含账号、查询参数或片段的 HTTPS URL（当前不支持 IPv6 目标）"}
         state.put("automatic",next)
         if(!next.getBoolean("enabled")) {save(state);return@synchronized}
         if(next.optBoolean("useDefaultCandidates") && state.getJSONArray("nodes").length()==0) {save(state);return@synchronized}

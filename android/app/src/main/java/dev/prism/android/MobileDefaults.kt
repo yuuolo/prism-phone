@@ -9,7 +9,7 @@ object MobileDefaults {
     val modes=listOf("rule","global","direct")
     fun modeName(mode:String)=when(mode){"global"->"全局";"direct"->"直连";else->"规则"}
     fun automatic()=JSONObject().put("enabled",true).put("useDefaultCandidates",true)
-        .put("candidateIds",JSONArray()).put("intervalSeconds",600).put("toleranceMs",100)
+        .put("candidateIds",JSONArray()).put("intervalSeconds",600).put("toleranceMs",100).put("policy","url-test").put("testUrl",testUrl)
     fun routing(regional:Boolean=true):JSONObject {
         val rules=JSONArray()
         for(net in listOf("127.0.0.0/8","10.0.0.0/8","172.16.0.0/12","192.168.0.0/16","169.254.0.0/16"))
