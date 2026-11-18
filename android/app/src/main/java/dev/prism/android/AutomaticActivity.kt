@@ -66,19 +66,22 @@ class AutomaticActivity:Activity() {
         status=text("正在读取内核优选状态…");root.addView(status)
         val search=EditText(this).apply {hint="搜索候选节点";contentDescription="搜索候选节点";isSingleLine=true};root.addView(search)
         list=LinearLayout(this).apply {orientation=LinearLayout.VERTICAL};root.addView(list)
+        defaultCandidates.setOnCheckedChangeListener {_,_->drawNodes()}
         search.addTextChangedListener(object:TextWatcher {override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){};override fun afterTextChanged(s:Editable?){};override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){query=s.toString();limit=50;drawNodes()}})
         root.addView(text("探测为经候选节点的真实 HTTPS 请求，校验证书；固定访问 1.1.1.1，结果仅用于可达性及握手耗时比较，不代表下载速度。最多每轮 16 次、每个 5 秒超时，默认间隔 10 分钟；断开 VPN 停止。探测流量不计入转发历史。",12f))
         drawNodes();setContentView(outer);outer.requestFocus();outer.requestApplyInsets();window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     }
     private fun drawNodes() {
-        list.removeAllViews();val count=text("已选 ${chosen.size}/16 个候选（按勾选顺序）");list.addView(count)
+        val useDefault=defaultCandidates.isChecked
         val available=(0 until nodes.length()).map {nodes.getJSONObject(it)}
+        val defaultIds=available.take(16).map {it.getString("_id")}.toSet()
+        list.removeAllViews();val count=text(if(useDefault) "默认池 ${defaultIds.size}/16 个候选；取消默认池后可手动选择" else "已选 ${chosen.size}/16 个候选（按勾选顺序）");list.addView(count)
         val missing=chosen.filter {id->available.none {it.optString("_id")==id}}
-        if(missing.isNotEmpty()) list.addView(button("移除 ${missing.size} 个已失效候选") {chosen.removeAll(missing.toSet());drawNodes()})
+        if(!useDefault && missing.isNotEmpty()) list.addView(button("移除 ${missing.size} 个已失效候选") {chosen.removeAll(missing.toSet());drawNodes()})
         val filtered=available.filter {MergedNodes.display(it).contains(query,true)}
         for(n in filtered.take(limit)) {
             val id=n.getString("_id")
-            list.addView(CheckBox(this).apply {text=MergedNodes.display(n);isChecked=id in chosen;contentDescription="候选 ${MergedNodes.display(n)}"
+            list.addView(CheckBox(this).apply {text=MergedNodes.display(n);isChecked=if(useDefault) id in defaultIds else id in chosen;isEnabled=!useDefault;contentDescription="候选 ${MergedNodes.display(n)}"
                 setOnCheckedChangeListener {button,checked ->
                     if(checked && chosen.size>=16) {button.isChecked=false;Toast.makeText(this@AutomaticActivity,"最多 16 个候选",Toast.LENGTH_SHORT).show()}
                     else {if(checked) chosen.add(id) else chosen.remove(id)}
