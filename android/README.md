@@ -1,6 +1,6 @@
 # Prism Android
 
-独立原生 Kotlin 界面与 Android VpnService，内嵌 Rust prism-core。当前发布版本 [0.2.0-beta.4](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.4)，与桌面版本、设置、签名及更新渠道分开。当前为完整功能范围的 Beta 验证阶段，仍待真机验收。
+独立原生 Kotlin 界面与 Android VpnService，内嵌 Rust prism-core。当前发布版本 [0.2.0-beta.5](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.5)，与桌面版本、设置、签名及更新渠道分开。当前为完整功能范围的 Beta 验证阶段，仍待真机验收。
 
 ## 范围
 
@@ -62,3 +62,5 @@ bash android/gradlew -p android assembleDebug
 CI：`.github/workflows/android.yml` 构建 ARM64 与 x86_64 JNI 库、APK、Lint，并在 Android 17 模拟器进行真实 VPN/DNS/TCP/UDP、IPv6 阻断、会话重建和断开测试。测试使用本地 SOCKS 服务，不使用真实订阅或远程账号。模拟器授权只作用于隔离 CI 设备，普通手机仍需要用户确认系统 VPN 对话框。
 
 在真机完成订阅节点、Wi-Fi/蜂窝切换、锁屏、后台、省电、撤权、内存和耗电验证前，不宣称已达到稳定发布标准。
+
+Beta.5 已发布高级扩展第一批：候选组 url-test、fallback、按目标粘性负载均衡及自定义 HTTPS 检测地址。新增七项高级目标尚未全部完成，见[高级能力路线](../docs/android-advanced.md)。原签名和旧版升级通道继续兼容。

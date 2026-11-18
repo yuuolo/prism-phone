@@ -36,3 +36,11 @@ Beta.4 后手机候选组扩展 fallback/按目标负载均衡与自定义 HTTPS
 发布仍使用原有 `dev.prism.android` 包名和原始签名证书。私钥及密码保存在被 Git 忽略的 `android/.signing/`，不提交、不上传 GitHub Secrets。发布只上传公开 APK、校验和及更新清单。
 
 旧仓库仅保留移动端入口说明与兼容发布资产；桌面应用继续使用原有 `latest.json`。安卓发布始终 `--prerelease --latest=false`，不得覆盖桌面稳定版更新通道。
+
+## Beta.5 发布与验收回执
+
+2026-11-19 发布 `0.2.0-beta.5`（versionCode 6），源码 `68de83a` 的[发布 CI 44346214298](https://github.com/yuuolo/prism-phone/actions/runs/44346214298)全部通过：双架构 Debug/Release、双 Lint、34 项手机 Rust、101 项 Linux 共享内核回归、7 项 Android 单元测试、双系统各 21 项完整回归及各自独立 180 秒 Doze。
+
+实际原签名 APK 从 Beta.4 经应用按钮及系统 Only this time/Update 覆盖，延续原 Beta.2 的 UID、Keystore、节点/凭据/来源/收藏/选择与规则，来源仍为 Ask every time。安装从已校验缓存开始，未算作本次线上检查/下载验收。两个仓库公开 APK、校验和与各自更新清单已下载回读一致；桌面 latest 仍为 v0.2.13。
+
+APK 大小 24,245,867 字节，SHA-256：`e6ce1e64443932880c8df9caf97f4a35247473151b62a2f2287ee1897f8d08da`。本次只交付高级目标的候选组第一批，其余目标继续开发；真机条件仍未完成。

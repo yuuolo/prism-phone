@@ -9,6 +9,10 @@
 
 新增真实 fallback 载荷、均衡分配/粘性、全部失败不直连、连续重建和节点变化回归；Android 验证两种策略的真实 TLS、实际出口流量归属及重建后的代理 DNS。
 
+[发布 CI 44346214298](https://github.com/yuuolo/prism-phone/actions/runs/44346214298)（源码 `68de83a`）全部通过：双架构 Debug/Release、双 Lint、34 项手机 Rust、101 项 Linux 共享内核回归、7 项 Android 单元测试，以及 API 26 与 Android 17/16 KiB 各 21 项完整回归和各自独立 180 秒 Doze。实际签名 APK 从真实 Beta.4 通过应用按钮及系统 Only this time/Update 完成安装，延续原 Beta.2 的 UID、Keystore、节点/凭据/来源/收藏/选择与规则校验通过。安装验收从已校验本地缓存开始，不冒充线上检查/下载。APK 大小 24,245,867 字节，SHA-256：`e6ce1e64443932880c8df9caf97f4a35247473151b62a2f2287ee1897f8d08da`。
+
 后续仍在开发：高级协议与传输的 Android 开放、完整 Clash/sing-box 配置与 providers、JavaScript 配置覆写、自定义多组/规则集/按应用分流、运行中热重载、完整 DNS/IPv6、应用流量/地图/质量曲线。当前未通过验收的能力仍明确拒绝，路线见 `docs/android-advanced.md`。
 
 主发布在 prism-phone，旧仓库继续提供兼容镜像及更新清单。真机长时后台、耗电、无线/双栈、第二设备共享与实际账号仍待验证；iOS 和 HarmonyOS NEXT 继续暂停。
+
+Android 17 的旧 Beta.2 若反复打开来源设置，可下载 APK 后通过系统文件管理器覆盖安装。

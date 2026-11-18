@@ -2,13 +2,13 @@
 
 本文定义移动端的交付边界。稳定安装包支持 Windows 和 macOS；Android 已提供 Beta 测试包，其他移动平台尚未发布。
 
-开发状态：Android `0.2.0-beta.4` 已在[手机独立仓库发布](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.4)，工程位于 `android/`，JNI 桥位于 `crates/prism-android/`。完整规划的 11 项功能已交付为 Beta。[发布 CI](https://github.com/yuuolo/prism-phone/actions/runs/44317571741)通过 ARM64/x86_64、Debug/Release、双 Lint、Rust/Android 单元测试，以及 API 26 和 Android 17 / API 37.2 / 16 KiB 两端各 20 项回归与各自独立 180 秒 Doze。原签名、实际发布包覆盖升级和加密配置保留验证通过；构建和模拟器通过不能替代真机稳定性验证。功能与证据边界见 [Android 完整验收](android-full.md)，工程说明见 [Android README](../android/README.md)。
+开发状态：Android `0.2.0-beta.5` 已在[手机独立仓库发布](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.5)，工程位于 `android/`，JNI 桥位于 `crates/prism-android/`。原规划的 11 项功能已交付为 Beta。[发布 CI](https://github.com/yuuolo/prism-phone/actions/runs/44346214298)通过 ARM64/x86_64、Debug/Release、双 Lint、Rust/Android 单元测试，以及 API 26 和 Android 17 / API 37.2 / 16 KiB 两端各 21 项回归与各自独立 180 秒 Doze。原签名、实际发布包覆盖升级和加密配置保留验证通过；构建和模拟器通过不能替代真机稳定性验证。功能与证据边界见 [Android 完整验收](android-full.md)，工程说明见 [Android README](../android/README.md)。
 
 当前优先验收 Android：Beta.4 在完整功能基础上完善首次分类数据准备、默认优选/广告策略、三模式路由及 PC 常用规则导入，并修复快速重连就绪误判。更新通道为独立的 `android-updates/android-update.json`，旧仓库通道继续维护，不改变桌面 latest；Alpha 用户需手动覆盖安装 Beta 一次。根据用户决定，iOS/iPadOS 和 HarmonyOS NEXT 继续暂停；目前没有 iOS 或 NEXT 安装包，不使用 APK 容器充当原生鸿蒙。
 
 ## 产品边界
 
-Android 完整版功能以 [完整范围与验收](android-full.md) 为准。`0.2.0-beta.4` 已包含该功能范围，仍需真机长时后台、耗电、无线切换、局域网第二设备及实际节点账号验收，未达到稳定版标准。
+Android 完整版功能以 [完整范围与验收](android-full.md) 为准。`0.2.0-beta.5` 已包含该功能范围，仍需真机长时后台、耗电、无线切换、局域网第二设备及实际节点账号验收，未达到稳定版标准。
 
 手机端与电脑端分别设计界面、运行机制、设置和发布流程。移动端不追求桌面功能齐全；无法实现、实现成本过高或在目标系统上不稳定的功能不纳入该平台版本，不保留不可用的按钮、占位页或需要反复重启的兼容模式。
 
@@ -64,3 +64,5 @@ Android、iOS/iPadOS、原生鸿蒙各自适配系统 VPN 接口和应用生命�
 - [Apple TestFlight](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/)
 - [Apple VPN 应用规则](https://developer.apple.com/app-store/review/guidelines/#vpn-apps)
 - [HarmonyOS VPN 扩展](https://developer.huawei.com/consumer/en/doc/harmonyos-guides/net-vpnextension/)
+
+Beta.5 已发布高级扩展第一批：候选组 url-test、fallback、按目标粘性负载均衡及自定义 HTTPS 检测地址。新增七项高级目标尚未全部完成，见[高级能力路线](android-advanced.md)。原签名和旧版升级通道继续兼容。
