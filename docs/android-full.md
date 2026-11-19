@@ -1,6 +1,6 @@
 # Android 完整版范围与验收
 
-本文保留原规划 11 项的验收清单；新增七项高级目标见[高级能力路线](android-advanced.md)，尚未全部完成。已发布的 `0.2.0-beta.5` 包含下列原功能范围及候选组第一批扩展，属于 Beta 验证版；功能已实现与软件回归通过不代表稳定版的真机验收已经完成。
+本文保留原规划 11 项的验收清单；新增七项高级目标见[高级能力路线](android-advanced.md)，尚未全部完成。已发布的 `0.2.0-beta.7` 包含下列原功能范围及前两批高级扩展（候选策略、应用 VPN 名单、节点质量曲线），属于 Beta 验证版；功能已实现与软件回归通过不代表稳定版的真机验收已经完成。
 
 Beta.4 已交付的首次数据准备、默认开关、URL Test、三模式路由、PC 规则兼容与就绪修复见[启动默认策略与路由](android-next-defaults.md)。
 
@@ -20,7 +20,7 @@ Beta.4 已交付的首次数据准备、默认开关、URL Test、三模式路�
 
 ## 稳定版剩余验收
 
-当前版本为 Beta.5，原 11 项功能已交付；新增高级目标仍在开发。以下不能用模拟器或隔离协议夹具代替，未通过前不宣称稳定版：
+当前版本为 Beta.7，原 11 项功能已交付；新增高级目标仍在开发。以下不能用模拟器或隔离协议夹具代替，未通过前不宣称稳定版：
 
 | 验收项 | 当前证据与剩余条件 |
 | --- | --- |
@@ -49,6 +49,10 @@ Beta.4 已交付的首次数据准备、默认开关、URL Test、三模式路�
 - 安卓安装包与桌面更新通道继续独立，使用现有安卓签名覆盖更新。
 
 ## 当前交付说明
+
+2026-11-19 发布 `0.2.0-beta.7`（code 8），源码 `410f29a` 的[发布 CI 44451687529](https://github.com/yuuolo/prism-phone/actions/runs/44451687529)全部通过：双架构 Debug/Release、双 Lint、34 项手机 Rust、101 项 Linux 共享内核回归、7 项 Android 单元测试、双系统各 23 项完整回归及各自独立 180 秒 Doze。两份后台报告已核对强制 IDLE、原进程与 VPN 不变、冷 DNS、严格 TLS/HTTP 200 和断开对照。原签名发布包从 Beta.6 经应用按钮及系统 Only this time/Update 覆盖，延续原 Beta.2 的 UID、Keystore、节点/凭据/来源/收藏/选择与规则；实际界面保存的应用包含名单也保留，主页范围提示核对通过。来源仍为 Ask every time，安装从已校验缓存开始，不算作本次线上检查/下载验收。新旧仓库公开 APK、校验和及各自下载地址的更新清单均已回读一致，桌面 latest 仍为 v0.2.13。[发布说明](releases/android-0.2.0-beta.7.md)。
+
+Beta.6（code 7、源码 `b6d5b48`、[CI 44449467389](https://github.com/yuuolo/prism-phone/actions/runs/44449467389)）先交付应用 VPN 名单和质量历史，同样通过双系统各 23 项及独立 Doze；Beta.7 修正主页接管范围提示，不替换 Beta.6 的已发布资产。
 
 2026-11-18 发布 `0.2.0-beta.4`（code 5），源码 `d28c3a4` 的[发布 CI 44317571741](https://github.com/yuuolo/prism-phone/actions/runs/44317571741)全部通过：双架构 Debug/Release、双 Lint、32 项手机 Rust、101 项共享内核回归、7 项 Android 单元测试、Release 权限检查、双系统各 20 项回归及各自独立 180 秒 Doze。实际发布包从真实 Beta.3 经应用按钮及系统 Only this time/Update 完成安装，延续原 Beta.2 的 UID、Keystore 与配置；数据初始化后再次校验通过，来源保持 Ask every time。新旧仓库下载回读的 APK、校验和与更新清单均一致，见[发布说明](releases/android-0.2.0-beta.4.md)。
 

@@ -44,3 +44,10 @@ Beta.4 后手机候选组扩展 fallback/按目标负载均衡与自定义 HTTPS
 实际原签名 APK 从 Beta.4 经应用按钮及系统 Only this time/Update 覆盖，延续原 Beta.2 的 UID、Keystore、节点/凭据/来源/收藏/选择与规则，来源仍为 Ask every time。安装从已校验缓存开始，未算作本次线上检查/下载验收。两个仓库公开 APK、校验和与各自更新清单已下载回读一致；桌面 latest 仍为 v0.2.13。
 
 APK 大小 24,245,867 字节，SHA-256：`e6ce1e64443932880c8df9caf97f4a35247473151b62a2f2287ee1897f8d08da`。本次只交付高级目标的候选组第一批，其余目标继续开发；真机条件仍未完成。
+## Beta.6 / Beta.7 发布回执
+
+Beta.6（code 7）源码 `b6d5b48`、CI `44449467389`；24,241,771 字节，SHA-256 `58f64f0e2cebf0fef50441a376d61d5545a587b12a29c38883cab11ef9e7de9a`。Beta.5 正常应用/系统覆盖通过，旧数据保留。
+
+2026-11-19 发布 `0.2.0-beta.7`（code 8），源码 `410f29a` 的[发布 CI 44451687529](https://github.com/yuuolo/prism-phone/actions/runs/44451687529)全部通过：双架构 Debug/Release、双 Lint、34 项手机 Rust、101 项 Linux 共享内核回归、7 项 Android 单元测试、双系统各 23 项完整回归及各自独立 180 秒 Doze。两份后台报告已核对强制 IDLE、原进程与 VPN 不变、冷 DNS、严格 TLS/HTTP 200 和断开对照。原签名发布包从 Beta.6 经应用按钮及系统 Only this time/Update 覆盖，延续原 Beta.2 的 UID、Keystore、节点/凭据/来源/收藏/选择与规则；实际界面保存的应用包含名单也保留，主页范围提示核对通过。来源仍为 Ask every time，安装从已校验缓存开始，不算作本次线上检查/下载验收。新旧仓库公开 APK、校验和及各自下载地址的更新清单均已回读一致，桌面 latest 仍为 v0.2.13。[发布说明](releases/android-0.2.0-beta.7.md)。
+
+Beta.7 APK 24,241,771 字节，SHA-256 `e38c8502b1d32a8e2edc15d0f0c14798c318f8d0b2d94bcc2fd55b8e836e53eb`。两个版本原签名和包名不变；旧仓库继续自己的 APK 下载地址。应用名单使用 Android VPN Builder，不改动 PC 进程路由；质量历史只增加手机候选状态输出，不修改桌面仓库。

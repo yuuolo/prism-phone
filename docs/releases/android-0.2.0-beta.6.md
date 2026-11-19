@@ -9,3 +9,9 @@
 按应用设置控制系统 VPN 路由。应用主动使用本机 HTTP/SOCKS5 代理时仍会通过该代理；系统“阻止无 VPN 连接”等策略也可能限制绕过应用的网络。完整配置、JavaScript 覆写、providers、多自定义组、按应用指定代理、热重载、高级协议、DNS/IPv6 与应用统计/地图仍按 `docs/android-advanced.md` 继续开发，不将界面或内核代码当作已验收交付。
 
 沿用原包名、签名与加密配置。主发布在 yuuolo/prism-phone，旧仓库保留同包镜像及独立兼容更新地址；不会改变桌面 latest。真机长时后台、耗电、无线与双栈切换、第二设备共享及实际账号仍待验收。
+
+本地 Android 8、Android 17/16 KiB 的新增应用路由、质量模型和真实候选组历史验收均通过，并检查界面截图。实际原签名 APK 从 Beta.5 经应用按钮及系统 Only this time/Update 覆盖，延续原 Beta.2 的 UID、Keystore、节点/凭据/来源/收藏/选择与规则校验通过；安装来源仍为 Ask every time。此安装验收从已校验缓存开始，不算作本次线上检查/下载验收。
+
+APK：24,241,771 字节，SHA-256：`58f64f0e2cebf0fef50441a376d61d5545a587b12a29c38883cab11ef9e7de9a`。
+
+[发布 CI 44449467389](https://github.com/yuuolo/prism-phone/actions/runs/44449467389)（源码 `b6d5b48`）全部通过：双架构 Debug/Release、双 Lint、34 项手机 Rust、101 项 Linux 共享内核回归、7 项 Android 单元测试、Release 权限检查，以及 Android 8 与 Android 17/16 KiB 各 23 项完整回归和各自独立 180 秒 Doze。两份后台报告已核对强制 IDLE、原进程与 VPN 不变、冷 DNS、严格 TLS/HTTP 200、断开不复活及断开对照拒绝。
