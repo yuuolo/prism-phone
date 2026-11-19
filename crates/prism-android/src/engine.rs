@@ -581,6 +581,10 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                     || n.server
                         .trim_end_matches('.')
                         .eq_ignore_ascii_case("localhost")
+                    || session
+                        .dns
+                        .as_ref()
+                        .is_some_and(|dns| dns.node_is_loopback(&n.server))
                 {
                     Some(n.port)
                 } else {

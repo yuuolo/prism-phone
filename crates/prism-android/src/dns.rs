@@ -125,6 +125,16 @@ fn servers(list: &[String], min: usize, max: usize, bootstrap: bool) -> Result<V
     Ok(values)
 }
 impl Config {
+    pub fn node_is_loopback(&self, server: &str) -> bool {
+        self.enabled
+            && server.parse::<std::net::IpAddr>().is_err()
+            && self
+                .hosts
+                .iter()
+                .find(|h| h.domain.eq_ignore_ascii_case(server.trim_end_matches('.')))
+                .and_then(|h| h.address.parse::<Ipv4Addr>().ok())
+                .is_some_and(|ip| ip.is_loopback())
+    }
     pub fn validate(&self) -> Result<()> {
         ensure!(self.version == 1, "不支持的 DNS 配置版本");
         ensure!(
@@ -349,7 +359,15 @@ mod tests {
         assert_eq!(p.dns.nameserver_policy[0].0, "+.example.com");
         assert!(!p.dns.fallback_filter.geoip);
         assert_eq!(p.hosts, vec![("host.test".into(), "192.0.2.10".into())]);
+        cfg.hosts.push(Host {
+            domain: "loop.test".into(),
+            address: "127.0.0.1".into(),
+        });
+        assert!(cfg.node_is_loopback("LOOP.test."));
+        assert!(!cfg.node_is_loopback("127.0.0.1"));
+        assert!(!cfg.node_is_loopback("host.test"));
         cfg.enabled = false;
+        assert!(!cfg.node_is_loopback("loop.test"));
         cfg.apply(&mut doc).unwrap();
         let p = prism_core::config::parse_any(&serde_yaml::to_string(&doc).unwrap()).unwrap();
         assert!(

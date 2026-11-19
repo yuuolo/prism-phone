@@ -7,7 +7,7 @@ android {
         applicationId = "dev.prism.android"
         minSdk = 26
         targetSdk = 37
-        versionCode = 9
+        versionCode = 10
         versionName = "0.2.0-beta.8"
         testInstrumentationRunner = providers.gradleProperty("prismAcceptanceRunner")
             .getOrElse("androidx.test.runner.AndroidJUnitRunner")

@@ -51,6 +51,24 @@ class AdvancedDnsTest {
             }
         }
     }
+    @Test fun hostsNodeLoopbackOverrideCannotBeUsedAsListener() {
+        context.getSharedPreferences("prism-mobile",0).edit().clear().commit();Updates.setEnabled(context,false)
+        shell("appops set ${context.packageName} ACTIVATE_VPN allow")
+        val port=java.net.ServerSocket(0).use{it.localPort};val store=ProfileStore(context)
+        store.import("proxies: [{name: Hosts loopback node, type: socks5, server: loop.proxy.test, port: $port}]",false)
+        val cfg=DnsSettings.defaults().put("enabled",true).put("hosts",JSONArray().put(JSONObject().put("domain","loop.proxy.test").put("address","127.0.0.1")))
+        store.updateDns("{}",cfg)
+        try {
+            context.startForegroundService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT));await("已连接")
+            val id=JSONObject(CoreBridge.status()).getString("sessionId")
+            val result=JSONObject(CoreBridge.proxyControl(JSONObject().put("action","start").put("sessionId",id).put("port",port).toString()))
+            assertEquals("Hosts aliases must be checked before binding","监听端口会回连到所选本机节点，请更换端口",result.optString("error"))
+            assertFalse(JSONObject(CoreBridge.proxyControl("{\"action\":\"status\"}")).optBoolean("running"))
+        } finally {
+            if(PrismVpnService.stage !in listOf("已断开","连接失败"))stop()
+            context.getSharedPreferences("prism-mobile",0).edit().clear().commit()
+        }
+    }
     @Test fun encryptedPoliciesFallbackAndHostsKeepDomainRulesAndProxyPath() {
         context.getSharedPreferences("prism-mobile",0).edit().clear().commit();Updates.setEnabled(context,false)
         shell("appops set ${context.packageName} ACTIVATE_VPN allow")
