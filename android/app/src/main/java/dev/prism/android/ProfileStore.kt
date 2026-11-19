@@ -21,6 +21,14 @@ class ProfileStore(context: Context) {
     companion object {
         private val lock = Any(); private const val ALIAS = "prism-mobile-profile-v1"
         fun sessionServers(session:JSONObject):List<String> {
+            val upstreams=sessionServerEndpoints(session)
+            val dns=session.optJSONObject("dns")
+            if(dns?.optBoolean("enabled")!=true)return upstreams
+            val hosts=dns.optJSONArray("hosts") ?: return upstreams
+            val aliases=(0 until hosts.length()).associate {val h=hosts.getJSONObject(it);h.getString("domain").lowercase() to h.getString("address")}
+            return upstreams.flatMap {host->listOfNotNull(host,aliases[host.trimEnd('.').lowercase()])}.distinct()
+        }
+        private fun sessionServerEndpoints(session:JSONObject):List<String> {
             // Later hops are reached through preceding proxies, not by a phone LAN socket.
             session.optJSONObject("chain")?.getJSONArray("hops")?.let {hops ->return listOf(hops.getJSONObject(0).getJSONObject("node").getString("server"))}
             val candidates=session.optJSONObject("automatic")?.optJSONArray("candidates")
@@ -80,6 +88,18 @@ class ProfileStore(context: Context) {
         AppRouting.parse(next,ownPackage).checkInstalled(appContext)
         state.put("appRouting",next);save(state)
     }
+    fun updateDns(expected:String,next:JSONObject)=synchronized(lock) {
+        requireIdle();val state=load()
+        check((state.optJSONObject("dns")?.toString() ?: "{}")==expected) {"DNS 配置已变化，请重新打开后修改"}
+        val validation=JSONObject(CoreBridge.validateDns(next.toString()))
+        require(!validation.has("error")){validation.optString("error")}
+        state.put("dns",next)
+        if(state.getJSONArray("nodes").length()>0) {
+            val result=JSONObject(CoreBridge.validateSession(buildSession(state).toString()))
+            require(!result.has("error")){"DNS、节点或现有策略不受支持，请先检查配置"}
+        }
+        save(state)
+    }
     private fun normalize(state: JSONObject): JSONObject {
         val nodes=state.getJSONArray("nodes")
         if(!state.has("subscriptions")) {
@@ -126,6 +146,7 @@ class ProfileStore(context: Context) {
         require(chainEnabled || merged!=null) {"所选节点不在合并池中，请重新选择节点"}
         val sessionNode=JSONObject(selectedNode.toString()).put("name",if(merged==null) selectedNode.getString("name") else MergedNodes.display(merged))
         val session=JSONObject().put("node",sessionNode).put("routing",MobileDefaults.effectiveRouting(profile))
+        profile.optJSONObject("dns")?.let {session.put("dns",it)}
         profile.optJSONObject("geodata")?.let {session.put("geodata",it)}
         profile.optJSONObject("adblock")?.let {session.put("adblock",it)}
         val automatic=profile.optJSONObject("automatic")

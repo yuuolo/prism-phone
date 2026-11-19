@@ -63,6 +63,7 @@ pub struct Resolver {
     fake_filter: DomainMatcher,
     ipv6: bool,
     hosts: HashMap<String, Vec<IpAddr>>,
+    fake_ip_hosts: bool,
     cache: Mutex<HashMap<(String, u16, usize), (Vec<u8>, Instant)>>,
     pub listen: Option<String>,
 }
@@ -245,6 +246,7 @@ pub fn build(
         fake_filter,
         ipv6: cfg.ipv6,
         hosts: host_map,
+        fake_ip_hosts: cfg.fake_ip_hosts,
         cache: Mutex::new(HashMap::new()),
         listen: cfg.listen.clone().filter(|l| !l.is_empty()),
     };
@@ -281,7 +283,7 @@ impl Resolver {
         if q.qtype == wire::TYPE_AAAA && !self.ipv6 {
             return wire::response(query, wire::RCODE_NOERROR, &[]);
         }
-        if is_addr {
+        if is_addr && !(self.fake_ip_hosts && self.fake.is_some() && !self.fake_filter.matches(&q.name)) {
             if let Some(ips) = self.hosts.get(&q.name) {
                 let want_v4 = q.qtype == wire::TYPE_A;
                 let ans: Vec<(IpAddr, u32)> = ips.iter().filter(|ip| ip.is_ipv4() == want_v4).map(|ip| (*ip, 10)).collect();
@@ -309,6 +311,12 @@ impl Resolver {
                 wire::response(query, wire::RCODE_SERVFAIL, &[])
             }
         }
+    }
+
+    /// Static overrides are applied after routing, preserving domain rules.
+    pub fn host_override(&self,host:&str)->Option<IpAddr> {
+        if !self.fake_ip_hosts {return None}
+        self.hosts.get(&host.trim_end_matches('.').to_ascii_lowercase())?.iter().copied().find(|ip|ip.is_ipv4())
     }
 
     /// Real addresses of `host` for outgoing connections.

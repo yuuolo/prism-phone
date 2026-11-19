@@ -25,6 +25,30 @@ rules:
 "#;
 
 #[tokio::test]
+async fn mobile_hosts_keep_fake_domains_rules_and_real_tcp_udp_destination() {
+    use tokio::{io::AsyncReadExt,net::{TcpListener,UdpSocket}};
+    let listener=TcpListener::bind("127.0.0.1:0").await.unwrap();let port=listener.local_addr().unwrap().port();
+    let udp=UdpSocket::bind("127.0.0.1:0").await.unwrap();let udp_port=udp.local_addr().unwrap().port();
+    let server=tokio::spawn(async move {let (mut s,_)=listener.accept().await.unwrap();tokio::io::AsyncWriteExt::write_all(&mut s,b"hosts-tcp").await.unwrap();});
+    let datagram=tokio::spawn(async move {let mut buf=[0u8;32];let(n,p)=udp.recv_from(&mut buf).await.unwrap();udp.send_to(&buf[..n],p).await.unwrap();});
+    let raw="proxies: [{name: fixture, type: socks5, server: 127.0.0.1, port: 1}]\ndns: {enable: true, enhanced-mode: fake-ip, fake-ip-range: 198.18.0.1/16, prism-fake-ip-hosts: true, nameserver: [127.0.0.1:1]}\nhosts: {allowed.test: 127.0.0.1, blocked.test: 127.0.0.1}\nrules: ['DOMAIN,blocked.test,REJECT', 'DOMAIN,allowed.test,DIRECT', 'MATCH,REJECT']";
+    let core=build(config::parse_any(raw).unwrap(),std::path::Path::new("."),&BuildEnv::standalone()).await.unwrap();
+    let dns=core.dns.as_ref().unwrap();
+    let fake_for=|name:&'static str|async move {let reply=dns.handle(&wire::query(9,name,wire::TYPE_A)).await.unwrap();wire::answers(&reply).unwrap().0[0].0};
+    let fake=fake_for("allowed.test").await;assert!(dns.is_fake(fake));
+    assert_eq!(dns.lookup("allowed.test").await.unwrap(),["127.0.0.1".parse::<IpAddr>().unwrap()]);
+    let mut meta=Metadata::new(Network::Tcp,"Tun","127.0.0.1:23456".parse().unwrap(),Address::new(&fake.to_string(),port),None);
+    let mut dial=core.tunnel.dial(&mut meta).await.unwrap();let mut bytes=[0u8;9];dial.stream.read_exact(&mut bytes).await.unwrap();assert_eq!(&bytes,b"hosts-tcp");assert_eq!(meta.dst.domain(),Some("allowed.test"));assert_eq!(dial.rule,"Domain(allowed.test)");
+    let mut meta=Metadata::new(Network::Udp,"Tun","127.0.0.1:23457".parse().unwrap(),Address::new(&fake.to_string(),udp_port),None);
+    let mut dial=core.tunnel.dial_udp(&mut meta).await.unwrap();dial.pipe.tx.send(b"hosts-udp".to_vec()).await.unwrap();assert_eq!(tokio::time::timeout(std::time::Duration::from_secs(2),dial.pipe.rx.recv()).await.unwrap().unwrap(),b"hosts-udp");
+    let blocked=fake_for("blocked.test").await;assert!(dns.is_fake(blocked));
+    for network in [Network::Tcp,Network::Udp] {let mut meta=Metadata::new(network,"Tun","127.0.0.1:23458".parse().unwrap(),Address::new(&blocked.to_string(),port),None);if matches!(network,Network::Tcp){assert!(core.tunnel.dial(&mut meta).await.is_err());}else{assert!(core.tunnel.dial_udp(&mut meta).await.is_err());}}
+    server.await.unwrap();datagram.await.unwrap();
+    let legacy=raw.replace("prism-fake-ip-hosts: true","prism-fake-ip-hosts: false");let legacy=build(config::parse_any(&legacy).unwrap(),std::path::Path::new("."),&BuildEnv::standalone()).await.unwrap();
+    let dns=legacy.dns.as_ref().unwrap();assert_eq!(dns.host_override("allowed.test"),None);let r=dns.handle(&wire::query(10,"allowed.test",wire::TYPE_A)).await.unwrap();assert_eq!(wire::answers(&r).unwrap().0[0].0,"127.0.0.1".parse::<IpAddr>().unwrap());
+}
+
+#[tokio::test]
 async fn sniffed_tun_connections_ignore_the_fake_ip() {
     let home = std::env::temp_dir().join(format!("prism-fakeip-{}", std::process::id()));
     std::fs::create_dir_all(&home).unwrap();

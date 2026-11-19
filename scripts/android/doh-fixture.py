@@ -1,4 +1,4 @@
-"""Loopback-only test SOCKS relay: permit only the app's fixed public DoH IP.
+"""Loopback-only test SOCKS relay: fixed public DoH and opt-in DoT endpoint.
 
 No TLS termination, test CA, proxy credentials, or DNS response substitution.
 The emulator's 10.0.2.2 host alias reaches this listener after LAN permission.
@@ -51,7 +51,10 @@ def serve(client, chain_first=False, acceptance_domains=False):
             else:
                 return
             port = int.from_bytes(read_exact(client, 2), "big")
-            allowed = ("127.0.0.1", 19090) if chain_first else ("1.1.1.1", 443)
+            # Acceptance may also test strict DNS-over-TLS at the same fixed
+            # public address. Never forward arbitrary destinations or ports.
+            dot_port = 853 if acceptance_domains and port == 853 else 443
+            allowed = ("127.0.0.1", 19090) if chain_first else ("1.1.1.1", dot_port)
             fixed_domain = acceptance_domains and not chain_first and host in ("one.one.one.one", "cloudflare-dns.com") and port == 443
             if (version, command, reserved) != (5, 1, 0) or not ((host, port) == allowed or fixed_domain):
                 log("target rejected by fixed allowlist")
@@ -63,7 +66,7 @@ def serve(client, chain_first=False, acceptance_domains=False):
             with socket.create_connection(destination, timeout=10) as remote:
                 client.sendall(b"\x05\x00\x00\x01" + bytes(6))
                 # Only fixed allowlisted labels; never log arbitrary destinations.
-                label = "fixed second SOCKS hop" if chain_first else (host if fixed_domain else "fixed DoH upstream")
+                label = "fixed second SOCKS hop" if chain_first else (host if fixed_domain else "fixed DoT upstream" if port == 853 else "fixed DoH upstream")
                 log("forwarding to " + label)
                 remote.settimeout(12)
                 uploaded = downloaded = 0

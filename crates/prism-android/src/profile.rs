@@ -1,7 +1,6 @@
 use anyhow::{bail, ensure, Result};
 use prism_core::config::{self, Profile, ProxyConfig, ProxyKind};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 pub const MAX_IMPORT: usize = 4 * 1024 * 1024;
 #[derive(Serialize, Deserialize)]
@@ -29,6 +28,8 @@ pub struct Session {
     pub adblock: Option<crate::adblock::Config>,
     #[serde(default)]
     pub chain: Option<crate::chain::Plan>,
+    #[serde(default)]
+    pub dns: Option<crate::dns::Config>,
 }
 
 pub(crate) fn supported(node: &ProxyConfig) -> bool {
@@ -136,11 +137,7 @@ pub fn build(s: Session) -> Result<(Profile, String)> {
     doc["find-process-mode"] = "off".into();
     doc["prism-block-ipv6"] = true.into();
     doc["rules"] = serde_yaml::to_value(&rules)?;
-    doc["dns"] = serde_yaml::to_value(json!({
-        "enable":true, "ipv6":false, "enhanced-mode":"fake-ip", "fake-ip-range":"198.18.0.1/16",
-        "nameserver":["https://1.1.1.1/dns-query#手机节点&proxy-only=true"],
-        "proxy-server-nameserver":["https://223.5.5.5/dns-query"]
-    }))?;
+    s.dns.unwrap_or_default().apply(&mut doc)?;
     let raw = serde_yaml::to_string(&doc)?;
     let mut profile = config::parse_any(&raw)?;
     profile.general.external_controller = None;
@@ -182,6 +179,7 @@ mod tests {
             geodata: None,
             adblock: None,
             chain: None,
+            dns: None,
         })
         .unwrap();
         assert!(p.general.block_ipv6);
@@ -205,6 +203,7 @@ mod tests {
             geodata: None,
             adblock: None,
             chain: None,
+            dns: None,
         })
         .is_err());
         assert!(build(Session {
@@ -218,6 +217,7 @@ mod tests {
             geodata: None,
             adblock: None,
             chain: None,
+            dns: None,
         })
         .is_ok());
     }

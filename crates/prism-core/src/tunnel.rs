@@ -239,7 +239,8 @@ impl Tunnel {
             e
         })?;
         let shown = if chain.len() > 1 { format!("{target}[{}]", chain.last().unwrap()) } else { target.clone() };
-        let res = tokio::time::timeout(Duration::from_secs(10), out.connect_udp(&meta.dst)).await;
+        let destination=self.host_destination(&meta.dst);
+        let res = tokio::time::timeout(Duration::from_secs(10), out.connect_udp(&destination)).await;
         let pipe = match res {
             Ok(Ok(p)) => p,
             Ok(Err(e)) => {
@@ -283,7 +284,8 @@ impl Tunnel {
             e
         })?;
         let shown = if chain.len() > 1 { format!("{target}[{}]", chain.last().unwrap()) } else { target.clone() };
-        let res = tokio::time::timeout(Duration::from_secs(10), out.connect(&meta.dst)).await;
+        let destination=self.host_destination(&meta.dst);
+        let res = tokio::time::timeout(Duration::from_secs(10), out.connect(&destination)).await;
         let stream = match res {
             Ok(Ok(s)) => s,
             Ok(Err(e)) => {
@@ -299,6 +301,10 @@ impl Tunnel {
         let mut chains = chain;
         chains.reverse(); // leaf first, like mihomo
         Ok(Dialed { stream, chains, rule, rule_payload: payload })
+    }
+
+    fn host_destination(&self,dst:&Address)->Address {
+        dst.domain().and_then(|h|self.dns.as_ref()?.host_override(h)).map(|ip|Address::new(&ip.to_string(),dst.port())).unwrap_or_else(||dst.clone())
     }
 
     /// Relays until both directions finish or the connection is closed via API.

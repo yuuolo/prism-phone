@@ -609,6 +609,9 @@ pub struct DnsConfig {
     pub enhanced_mode: String,
     pub fake_ip_range: String,
     pub fake_ip_filter: Vec<String>,
+    /// Mobile opt-in: preserve domain routing while applying static hosts at dial.
+    #[serde(default)]
+    pub fake_ip_hosts: bool,
     pub default_nameserver: Vec<String>,
     pub nameserver: Vec<String>,
     pub proxy_server_nameserver: Vec<String>,

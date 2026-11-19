@@ -148,6 +148,7 @@ mod tests {
             geodata: None,
             adblock: None,
             chain: Some(plan),
+            dns: None,
         })
         .unwrap();
         p.dns.enable = false; // Loopback protocol matrix never contacts a public resolver; Android verifies real DoH separately.
@@ -596,6 +597,7 @@ mod tests {
             geodata: None,
             adblock: None,
             chain: Some(plan),
+            dns: None,
         })
         .unwrap();
         profile.dns.nameserver = vec![format!("tcp://127.0.0.1:{port}#手机节点&proxy-only=true")];

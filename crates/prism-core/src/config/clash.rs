@@ -291,6 +291,7 @@ fn parse_dns(d: &Mapping) -> DnsConfig {
         enhanced_mode: s(d, "enhanced-mode").unwrap_or_else(|| "normal".into()),
         fake_ip_range: s(d, "fake-ip-range").unwrap_or_default(),
         fake_ip_filter: list(d, "fake-ip-filter"),
+        fake_ip_hosts: b(d, "prism-fake-ip-hosts"),
         default_nameserver: list(d, "default-nameserver"),
         nameserver: list(d, "nameserver"),
         proxy_server_nameserver: list(d, "proxy-server-nameserver"),

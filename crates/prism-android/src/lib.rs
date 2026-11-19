@@ -4,6 +4,7 @@ pub mod automatic;
 pub mod chain;
 pub mod connections;
 pub mod diagnostics;
+pub mod dns;
 #[cfg(target_os = "android")]
 mod engine;
 pub mod geodata;

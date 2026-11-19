@@ -104,6 +104,24 @@ fn node_labels(r: &Running) -> std::collections::HashMap<String, String> {
 }
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 #[no_mangle]
+pub extern "system" fn Java_dev_prism_android_CoreBridge_validateDns(
+    mut env: JNIEnv,
+    _: JClass,
+    raw: JString,
+) -> jstring {
+    ffi(&mut env, |env| {
+        let result = (|| -> anyhow::Result<Value> {
+            let raw = input(env, &raw).map_err(|_| anyhow::anyhow!("无法读取 DNS 配置"))?;
+            anyhow::ensure!(raw.len() <= 64 * 1024, "DNS 配置超过 64 KiB");
+            let cfg: crate::dns::Config = serde_json::from_str(&raw)
+                .map_err(|_| anyhow::anyhow!("DNS 配置字段或格式无效"))?;
+            cfg.validate()?;
+            Ok(json!({"ok":true}))
+        })();
+        result.unwrap_or_else(|e| json!({"error":e.to_string()}))
+    })
+}
+#[no_mangle]
 pub extern "system" fn Java_dev_prism_android_CoreBridge_validateChain(
     mut env: JNIEnv,
     _: JClass,
