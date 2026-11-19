@@ -7,8 +7,8 @@ android {
         applicationId = "dev.prism.android"
         minSdk = 26
         targetSdk = 37
-        versionCode = 7
-        versionName = "0.2.0-beta.6"
+        versionCode = 8
+        versionName = "0.2.0-beta.7"
         testInstrumentationRunner = providers.gradleProperty("prismAcceptanceRunner")
             .getOrElse("androidx.test.runner.AndroidJUnitRunner")
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }

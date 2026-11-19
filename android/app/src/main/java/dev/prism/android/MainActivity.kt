@@ -157,7 +157,7 @@ class MainActivity : Activity() {
         card(true) {
         label("PRISM VPN",11f).apply {letterSpacing=.16f; setTextColor(Color.rgb(197,182,235))}
         status=label(PrismVpnService.stage,28f)
-        label("加密 DNS · 全设备接管",13f).setTextColor(Color.rgb(215,204,237))
+        label("加密 DNS · "+AppRouting.parse(state.optJSONObject("appRouting"),packageName).summary(),13f).setTextColor(Color.rgb(215,204,237))
         val pool=MergedNodes.pool(state);val choices=pool.nodes;nodeCount=choices.size
         hasConfiguredChain=state.optJSONObject("chain")?.optBoolean("enabled")==true
         val selectedId=state.getJSONArray("nodes").optJSONObject(state.optInt("selected"))?.optString("_id")
@@ -223,7 +223,7 @@ class MainActivity : Activity() {
         }
         label("按需测试当前节点，不在后台持续测速。",13f)
         }
-        card {label("DNS 隐私保护",18f); label("DNS 经所选节点加密查询。IPv6 流量已接管，当前版本阻断 IPv6 目标。",13f)}
+        card {label("DNS 隐私保护",18f); label("进入 VPN 的应用使用所选节点加密查询 DNS，当前版本阻断其 IPv6 目标。绕过 VPN 的应用使用系统网络，不受 Prism DNS、规则及广告拦截保护。",13f)}
         updateStatus()
     }
     private fun requestVpnConnection() {
