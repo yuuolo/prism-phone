@@ -51,3 +51,9 @@ Beta.6（code 7）源码 `b6d5b48`、CI `44449467389`；24,241,771 字节，SHA-
 2026-11-19 发布 `0.2.0-beta.7`（code 8），源码 `410f29a` 的[发布 CI 44451687529](https://github.com/yuuolo/prism-phone/actions/runs/44451687529)全部通过：双架构 Debug/Release、双 Lint、34 项手机 Rust、101 项 Linux 共享内核回归、7 项 Android 单元测试、双系统各 23 项完整回归及各自独立 180 秒 Doze。两份后台报告已核对强制 IDLE、原进程与 VPN 不变、冷 DNS、严格 TLS/HTTP 200 和断开对照。原签名发布包从 Beta.6 经应用按钮及系统 Only this time/Update 覆盖，延续原 Beta.2 的 UID、Keystore、节点/凭据/来源/收藏/选择与规则；实际界面保存的应用包含名单也保留，主页范围提示核对通过。来源仍为 Ask every time，安装从已校验缓存开始，不算作本次线上检查/下载验收。新旧仓库公开 APK、校验和及各自下载地址的更新清单均已回读一致，桌面 latest 仍为 v0.2.13。[发布说明](releases/android-0.2.0-beta.7.md)。
 
 Beta.7 APK 24,241,771 字节，SHA-256 `e38c8502b1d32a8e2edc15d0f0c14798c318f8d0b2d94bcc2fd55b8e836e53eb`。两个版本原签名和包名不变；旧仓库继续自己的 APK 下载地址。应用名单使用 Android VPN Builder，不改动 PC 进程路由；质量历史只增加手机候选状态输出，不修改桌面仓库。
+
+## Beta.8 发布回执
+
+2026-11-19 发布 `0.2.0-beta.8`（code 10，9 仅本地候选未发布），源码 `17ac37a` 的[发布 CI 44461176843](https://github.com/yuuolo/prism-phone/actions/runs/44461176843)全部通过：双架构 Debug/Release、双 Lint、37 项手机 Rust、102 项 Linux 共享内核回归、7 项 Android 单元测试、双系统各 25 项及各自独立 180 秒 Doze。后台原始报告已核对强制 IDLE、进程/VPN 不变、冷 DNS、严格 TLS/HTTP 200、断开不复活及断开对照拒绝。原签名包从 Beta.7 code 8 经未发布候选 9、最终 10 连续通过应用按钮及系统 Only this time/Update 覆盖，保留原 Beta.2 的 UID、Keystore、节点/凭据/来源/收藏/选择与规则；应用包含名单及旧默认 DNS 保留，安装来源仍为 Ask every time。安装从已校验缓存开始，不算作本次线上检查/下载验收。最终 CI ZIP 官方摘要核对通过；两个仓库公开 APK、校验和及各自更新地址已回读一致，桌面 latest 仍为 v0.2.13。[发布说明](releases/android-0.2.0-beta.8.md)。
+
+APK 24,323,691 字节，SHA-256 `74c647770dc1060c876d9c178804aebb1b5b857b0a366f6d996f37ade2ce0882`。新增 DNS 模型为可选 version 1，旧配置保持默认；手机共享快照的 opt-in fake-IP hosts 与拨号覆盖详见 `android-dns.md`，默认不改变未启用该开关的旧行为，不同步修改桌面。

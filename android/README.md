@@ -1,6 +1,6 @@
 # Prism Android
 
-独立原生 Kotlin 界面与 Android VpnService，内嵌 Rust prism-core。当前发布版本 [0.2.0-beta.7](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.7)，与桌面版本、设置、签名及更新渠道分开。原 11 项功能及前两批高级扩展处于 Beta 验证阶段，新增高级目标尚未全部完成，仍待真机验收。
+独立原生 Kotlin 界面与 Android VpnService，内嵌 Rust prism-core。当前发布版本 [0.2.0-beta.8](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.8)，与桌面版本、设置、签名及更新渠道分开。原 11 项功能及前三批高级扩展处于 Beta 验证阶段，新增高级目标尚未全部完成，仍待真机验收。
 
 ## 范围
 
@@ -66,3 +66,5 @@ CI：`.github/workflows/android.yml` 构建 ARM64 与 x86_64 JNI 库、APK、Lin
 Beta.5 已发布高级扩展第一批：候选组 url-test、fallback、按目标粘性负载均衡及自定义 HTTPS 检测地址。新增七项高级目标尚未全部完成，见[高级能力路线](../docs/android-advanced.md)。原签名和旧版升级通道继续兼容。
 
 Beta.6/7 新增[按应用 VPN 包含/排除与节点质量曲线](../docs/android-app-routing.md)。应用名单不等于按应用指定节点；曲线读取已有最近 10 次真实探测，不额外测速。两端各 23 项及独立 180 秒 Doze、原签名连续覆盖和配置保留通过。
+
+Beta.8 新增[加密 DNS 上游、分域策略、fallback 和 hosts](../docs/android-dns.md)，保留严格证书及代理-only 隐私边界；IPv6 仍阻断。最终 code 10 通过双系统各 25 项与独立 180 秒 Doze，原签名连续覆盖保留原 Beta.2 数据、应用名单和旧默认 DNS。

@@ -2,11 +2,12 @@
 
 Prism 手机端独立仓库。当前交付 Android Beta，原生 Kotlin 界面、Android VpnService 和 Rust 内核。桌面端在 [yuuolo/prism](https://github.com/yuuolo/prism)。iOS/iPadOS 与 HarmonyOS NEXT 暂停开发。
 
-当前版本：[Android 0.2.0-beta.7](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.7)，包含原规划 11 项功能，以及候选组策略、自定义检测地址、按应用 VPN 分流和真实节点质量曲线；[发布说明](docs/releases/android-0.2.0-beta.7.md)。新增七项高级目标尚未全部完成，见[高级路线](docs/android-advanced.md)。沿用原签名，兼容既有 Beta 覆盖升级。真机验收尚未完成，仍非稳定版。
+当前版本：[Android 0.2.0-beta.8](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.8)，包含原规划 11 项功能，以及候选组策略、自定义检测地址、按应用 VPN 分流和真实节点质量曲线和高级 DNS；[发布说明](docs/releases/android-0.2.0-beta.8.md)。新增七项高级目标尚未全部完成，见[高级路线](docs/android-advanced.md)。沿用原签名，兼容既有 Beta 覆盖升级。真机验收尚未完成，仍非稳定版。
 
 - [Android 功能、构建和验证](android/README.md)
 - [完整版功能范围与验收标准](docs/android-full.md)：区分 Beta 已交付功能、软件验收与剩余真机条件。
 - [按应用分流与节点质量](docs/android-app-routing.md)
+- [高级 DNS 配置与验收](docs/android-dns.md)
 - [移动端平台边界](docs/mobile.md)
 - [迁移来源与升级兼容](docs/repository-migration.md)
 
