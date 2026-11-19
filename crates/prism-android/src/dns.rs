@@ -96,7 +96,9 @@ fn endpoint(raw: &str, bootstrap: bool) -> Result<String> {
         ensure!(u.path().is_empty(), "DoT 地址不能带路径");
     }
     if bootstrap {
-        let Some(url::Host::Ipv4(ip)) = u.host() else {
+        // Non-special schemes such as tls:// retain numeric hosts as Domain
+        // in url::Url. Parse the canonical host text, never resolve a name.
+        let Some(ip) = u.host_str().and_then(|host| host.parse::<Ipv4Addr>().ok()) else {
             anyhow::bail!("节点引导 DNS 必须使用加密的公网 IPv4 字面地址，避免递归或系统 DNS");
         };
         ensure!(
@@ -241,6 +243,10 @@ mod tests {
     fn encrypted_endpoints_and_bounded_policies_reject_escape_routes() {
         let good = Config::default();
         good.validate().unwrap();
+        assert!(
+            endpoint("tls://1.1.1.1", true).is_ok(),
+            "Public IPv4 DoT bootstrap must be accepted"
+        );
         for address in [
             "udp://1.1.1.1",
             "http://1.1.1.1/dns-query",
