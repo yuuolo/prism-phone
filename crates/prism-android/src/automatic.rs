@@ -65,9 +65,13 @@ impl Plan {
             .and_then(|g| g.as_group().map(|g| g.now()))
             .unwrap_or_default();
         let candidates:Vec<_>=self.candidates.iter().map(|c| {
-            let last=reg.delays.history(&name(&c.id)).last().cloned();
+            let samples=reg.delays.history(&name(&c.id));
+            let last=samples.last();
+            let history:Vec<_>=samples.iter().map(|r|serde_json::json!({
+                "atMs":r.time.timestamp_millis(),"delayMs":if r.delay==0 {None}else{Some(r.delay)},"success":r.delay!=0
+            })).collect();
             serde_json::json!({"id":c.id,"name":c.node.name,"selected":name(&c.id)==current,
-                "delayMs":last.as_ref().map(|r|r.delay),"testedAt":last.map(|r|r.time.to_rfc3339())})
+                "delayMs":last.map(|r|r.delay),"testedAt":last.map(|r|r.time.to_rfc3339()),"history":history})
         }).collect();
         let candidates = if self.policy == Policy::LoadBalance {
             candidates

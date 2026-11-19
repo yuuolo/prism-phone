@@ -64,6 +64,8 @@ jobs:
           export RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384'
           cargo ndk -t x86_64 --platform 26 build --release -p prism-android --features acceptance-tools --bin prism-acceptance-client --locked
           mkdir -p background-tools
+          bash android/gradlew -p android :routeprobe:assembleDebug
+          cp android/routeprobe/build/outputs/apk/debug/routeprobe-debug.apk background-tools/routeprobe.apk
           bash scripts/android/build-ui-snapshot.sh
           cp target/x86_64-linux-android/release/prism-acceptance-client background-tools/
           bash android/gradlew -p android assembleDebugAndroidTest -PprismAcceptanceRunner=dev.prism.android.BackgroundSeedInstrumentation
@@ -77,7 +79,7 @@ jobs:
         run: |
           "$ANDROID_HOME/build-tools/37.0.0/aapt2" dump permissions android/app/build/outputs/apk/release/app-release-unsigned.apk > release-permissions.txt
           grep -Fxq 'package: dev.prism.android' release-permissions.txt
-          if grep -Eq 'android.permission.(CHANGE_WIFI_STATE|ACCESS_WIFI_STATE)' release-permissions.txt; then
+          if grep -Eq 'android.permission.(CHANGE_WIFI_STATE|ACCESS_WIFI_STATE|QUERY_ALL_PACKAGES)' release-permissions.txt; then
             cat release-permissions.txt
             exit 1
           fi

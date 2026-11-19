@@ -398,7 +398,10 @@ class MainActivity : Activity() {
         label("路由规则",20f)
         label("按规则组和组内顺序首次命中；可直连、拒绝或使用所选节点。原有直连规则按原顺序保留。修改须先断开 VPN。",13f)
         button("管理路由规则") {startActivity(Intent(this,RoutingActivity::class.java))}
+        label("应用分流："+AppRouting.parse(state.optJSONObject("appRouting"),packageName).summary(),13f)
+        button("按应用分流") {startActivity(Intent(this,AppRoutingActivity::class.java))}
         button("自动优选节点") {startActivity(Intent(this,AutomaticActivity::class.java))}
+        button("节点质量曲线") {startActivity(Intent(this,NodeQualityActivity::class.java))}
         button("地区数据与分类") {startActivity(Intent(this,GeoDataActivity::class.java))}
         button("广告域名拦截") {startActivity(Intent(this,AdblockActivity::class.java))}
         button("链式代理设置") {startActivity(Intent(this,ChainActivity::class.java))}

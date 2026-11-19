@@ -100,15 +100,19 @@ class PrismVpnService : VpnService() {
                 nativeOwner?.takeIf {it!==this}?.cleanup()
                 awaitDetached(true)
                 check(prepare(this) == null) { "请重新授权 VPN" }
-                val config = ProfileStore(this).session()
+                val profileStore=ProfileStore(this)
+                val appRouting=AppRouting.parse(profileStore.load().optJSONObject("appRouting"),packageName)
+                appRouting.checkInstalled(this)
+                val config = profileStore.session()
                 if(ProfileStore.sessionServers(JSONObject(config)).any {LocalNetworkAccess.needsPermission(this,it)}) throw LocalNetworkPermissionRequired()
                 val validation = JSONObject(CoreBridge.validateSession(config))
                 check(!validation.has("error"))
-                val fd = Builder().setSession("Prism Android").setMtu(1500).setBlocking(false)
+                val builder = Builder().setSession("Prism Android").setMtu(1500).setBlocking(false)
                     .addAddress("172.19.0.1", 30).addDnsServer("172.19.0.2").addRoute("0.0.0.0", 0)
                     .addAddress("fdfe:dcba:9876::1", 126).addRoute("::", 0)
                     .setConfigureIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE))
-                    .establish() ?: error("VPN permission revoked")
+                appRouting.apply(builder,this)
+                val fd=builder.establish() ?: error("VPN permission revoked")
                 descriptor = fd
                 nativeOwner=this; activeCoreTicket=ticket
                 val result = JSONObject(CoreBridge.start(fd.fd, config, filesDir.absolutePath, this))
@@ -124,7 +128,7 @@ class PrismVpnService : VpnService() {
             } catch (error: Throwable) {
                 cleanup()
                 main.post { if (ticket == generation.get() && !destroyed) {
-                    publish("连接失败",if(error is LocalNetworkPermissionRequired) "局域网节点需要局域网访问权限，请在设置授权" else "请检查 VPN 授权、节点参数和系统限制")
+                    publish("连接失败",when(error){is AppRoutingUnavailable->error.message ?: "应用分流配置不可用";is LocalNetworkPermissionRequired->"局域网节点需要局域网访问权限，请在设置授权";else->"请检查 VPN 授权、节点参数和系统限制"})
                     stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
                 } }
             }

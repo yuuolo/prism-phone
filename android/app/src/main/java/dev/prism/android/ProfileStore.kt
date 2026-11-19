@@ -14,6 +14,8 @@ import javax.crypto.spec.GCMParameterSpec
 
 /** Credentials and subscription URLs never enter plaintext preferences or backups. */
 class ProfileStore(context: Context) {
+    private val appContext=context.applicationContext
+    private val ownPackage=appContext.packageName
     private val home=context.applicationContext.filesDir.absolutePath
     private val prefs = context.applicationContext.getSharedPreferences("prism-mobile", Context.MODE_PRIVATE)
     companion object {
@@ -71,6 +73,12 @@ class ProfileStore(context: Context) {
     fun updateMode(mode:String)=synchronized(lock) {
         requireIdle();require(mode in MobileDefaults.modes)
         save(load().put("mode",mode))
+    }
+    fun updateAppRouting(expected:String,next:JSONObject)=synchronized(lock) {
+        requireIdle();val state=load()
+        check((state.optJSONObject("appRouting")?.toString() ?: "{}")==expected) {"应用分流已变化，请重新打开后修改"}
+        AppRouting.parse(next,ownPackage).checkInstalled(appContext)
+        state.put("appRouting",next);save(state)
     }
     private fun normalize(state: JSONObject): JSONObject {
         val nodes=state.getJSONArray("nodes")

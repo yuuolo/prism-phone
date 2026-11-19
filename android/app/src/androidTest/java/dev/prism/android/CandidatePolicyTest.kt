@@ -62,6 +62,21 @@ class CandidatePolicyTest {
                 }
                 assertTrue("$policy health: ${CoreBridge.status()}",healthy)
                 val current=JSONObject(CoreBridge.status())
+                val history=current.getJSONObject("automatic").getJSONArray("candidates")
+                val failed=QualityHistory.parse(history.getJSONObject(0).getJSONArray("history"))
+                val succeeded=QualityHistory.parse(history.getJSONObject(1).getJSONArray("history"))
+                assertTrue(failed.isNotEmpty() && failed.all{it.delay==null})
+                assertTrue(succeeded.isNotEmpty() && succeeded.all{it.delay!=null})
+                assertTrue(QualityHistory.summary(failed).contains("暂无成功样本"))
+                if(policy=="fallback") {
+                    context.startActivity(Intent(context,NodeQualityActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    val device=androidx.test.uiautomator.UiDevice.getInstance(instrumentation)
+                    try {
+                        assertTrue(device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.textContains("失败 1/1 次探测")),5000))
+                        val images=File(context.getExternalFilesDir(null),"screenshots").apply{mkdirs()}
+                        assertTrue(device.takeScreenshot(File(images,"node-quality-live.png")))
+                    } finally {device.pressBack()}
+                }
                 assertEquals(if(policy=="fallback") "Live policy member" else "按目标负载均衡",current.getString("nodeName"))
                 if(policy=="load-balance") {val c=current.getJSONObject("automatic").getJSONArray("candidates");assertTrue((0 until c.length()).none {c.getJSONObject(it).getBoolean("selected")})}
                 tlsPayload()
@@ -74,6 +89,8 @@ class CandidatePolicyTest {
                     if(s.getLong("networkRebuilds")>rebuild && (0 until c.length()).all{c.getJSONObject(it).isNull("delayMs")}){reset=true;break};Thread.sleep(100)
                 }
                 assertTrue("$policy rebuild: ${CoreBridge.status()}",reset)
+                val resetCandidates=JSONObject(CoreBridge.status()).getJSONObject("automatic").getJSONArray("candidates")
+                assertTrue((0 until resetCandidates.length()).all{resetCandidates.getJSONObject(it).getJSONArray("history").length()==0})
                 val dns=JSONObject(CoreBridge.diagnose("{\"kind\":\"dns\",\"host\":\"example.com\"}"))
                 assertTrue("$policy proxy DNS: $dns",dns.has("addresses"))
             } finally {context.startService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.DISCONNECT));await("已断开")}

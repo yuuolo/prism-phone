@@ -7,6 +7,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <queries>
+        <intent><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent>
+    </queries>
     <application android:label="Prism Android" android:icon="@drawable/ic_prism" android:theme="@style/AppTheme" android:allowBackup="false" android:fullBackupContent="false" android:usesCleartextTraffic="false" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
@@ -16,6 +19,8 @@
         <activity android:name=".NetworkToolsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".LocalProxyActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".RoutingActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".AppRoutingActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".NodeQualityActivity" android:exported="false" />
         <activity android:name=".AutomaticActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".MergeActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".GeoDataActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
