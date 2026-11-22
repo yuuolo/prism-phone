@@ -2,13 +2,13 @@
 
 本文定义移动端的交付边界。稳定安装包支持 Windows 和 macOS；Android 已提供 Beta 测试包，其他移动平台尚未发布。
 
-开发状态：Android `0.2.0-beta.8` 已在[手机独立仓库发布](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.8)，工程位于 `android/`，JNI 桥位于 `crates/prism-android/`。原规划的 11 项功能已交付为 Beta。[发布 CI](https://github.com/yuuolo/prism-phone/actions/runs/44461176843)通过 ARM64/x86_64、Debug/Release、双 Lint、Rust/Android 单元测试，以及 API 26 和 Android 17 / API 37.2 / 16 KiB 两端各 25 项回归与各自独立 180 秒 Doze。原签名、实际发布包覆盖升级和加密配置保留验证通过；构建和模拟器通过不能替代真机稳定性验证。功能与证据边界见 [Android 完整验收](android-full.md)，工程说明见 [Android README](../android/README.md)。
+开发状态：Android `0.2.0-beta.9` 已在[手机独立仓库发布](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.9)，工程位于 `android/`，JNI 桥位于 `crates/prism-android/`。原规划的 11 项功能已交付为 Beta。[发布 CI](https://github.com/yuuolo/prism-phone/actions/runs/45032593041)通过 ARM64/x86_64、Debug/Release、双 Lint、Rust/Android 单元测试，以及 API 26 和 Android 17 / API 37.2 / 16 KiB 两端各 25 项回归与各自独立 180 秒 Doze。原签名、实际发布包覆盖升级和加密配置保留验证通过；构建和模拟器通过不能替代真机稳定性验证。功能与证据边界见 [Android 完整验收](android-full.md)，工程说明见 [Android README](../android/README.md)。
 
-Android 当前交付至 Beta.8，新增高级 DNS；Beta.4 已在原功能基础上完善首次分类数据准备、默认优选/广告策略、三模式路由及 PC 常用规则导入，并修复快速重连就绪误判。更新通道为独立的 `android-updates/android-update.json`，旧仓库通道继续维护，不改变桌面 latest；Alpha 用户需手动覆盖安装 Beta 一次。根据用户决定，iOS/iPadOS 和 HarmonyOS NEXT 继续暂停；目前没有 iOS 或 NEXT 安装包，不使用 APK 容器充当原生鸿蒙。
+Android 当前交付至 Beta.9，修复切网后的健康重测与恢复状态；Beta.8 新增高级 DNS；Beta.4 已在原功能基础上完善首次分类数据准备、默认优选/广告策略、三模式路由及 PC 常用规则导入，并修复快速重连就绪误判。更新通道为独立的 `android-updates/android-update.json`，旧仓库通道继续维护，不改变桌面 latest；Alpha 用户需手动覆盖安装 Beta 一次。根据用户决定，iOS/iPadOS 和 HarmonyOS NEXT 继续暂停；目前没有 iOS 或 NEXT 安装包，不使用 APK 容器充当原生鸿蒙。
 
 ## 产品边界
 
-Android 完整版功能以 [完整范围与验收](android-full.md) 为准。`0.2.0-beta.8` 已包含原 11 项功能范围，以及候选策略、应用 VPN 名单、质量曲线和高级 DNS；新增七项高级目标仍未全部完成，仍需真机长时后台、耗电、无线切换、局域网第二设备及实际节点账号验收，未达到稳定版标准。
+Android 完整版功能以 [完整范围与验收](android-full.md) 为准。`0.2.0-beta.9` 已包含原 11 项功能范围，以及候选策略、应用 VPN 名单、质量曲线和高级 DNS；新增七项高级目标仍未全部完成，仍需真机长时后台、耗电、无线切换、局域网第二设备及实际节点账号验收，未达到稳定版标准。
 
 手机端与电脑端分别设计界面、运行机制、设置和发布流程。移动端不追求桌面功能齐全；无法实现、实现成本过高或在目标系统上不稳定的功能不纳入该平台版本，不保留不可用的按钮、占位页或需要反复重启的兼容模式。
 
