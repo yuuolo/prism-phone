@@ -27,6 +27,8 @@ Windows 本地最新共享内核 90 项单元、2 项跨格式参数与手机策
 
 ## 尚未通过与证据边界
 
+2026-11-22 最新参数修正后的 API 26 专项首次运行失败：auto 已完成，下一阶段的公共 TLS 上游关闭连接（`vmess-port-api26.log`、`vmess-port-api26-failed-evidence.json`）；相同 APK 单次复测通过，31.167 秒（`vmess-port-api26-recheck.log`、对应 evidence）。没有修改 TLS 断言，也不把复测通过当作首次失败已修复；根因仍需定位。分支 CI 45034871491 的手机 40 项、Linux 内核 86 项通过，但旧 `anytls_wire::records_follow_the_padding_scheme` 在首包明文长度 96 的范围断言失败，后续互通和模拟器步骤未执行；保留 `artifacts/vmess-ci-45034871491-failed.log`，不能声称 VMess 远端 CI 已通过。
+
 后续数据完整性修正：VMess UDP 原先会对超长报文取前缀发送，现按实际标准帧长度校验；计入认证标签与填充后超过 2^14 的报文明确关闭该 UDP 会话，不截断或拆成多个报文。无法区别于流结束的空报文也明确拒绝。检查使用实际编码长度，明文模式的合法 16384 字节 payload 不被统一降低上限。本地 TCP 字节捕获回归验证非法输入只留下请求头、无 payload 帧，另验证各 body cipher 合法边界完整还原。记录为 `artifacts/vmess-udp-boundary-before-exact.log`（旧行为失败）及 `artifacts/vmess-udp-boundary-after.log`（修复后通过）。修复后两类独立服务端的既定范围重新通过，记录为 `artifacts/vmess-udp-v2fly-common.log`、`artifacts/vmess-udp-xray-large.log`；没有将 V2Fly 的 8 KiB 失败算作解决。
 
 参数保真修正：Clash `alterId`、sing-box `alter_id` 及分享链接 `aid` 不再把负值、浮点、溢出或无效类型回落/截断为 0。合法 u32 数值保留供构造器判断，仅 AEAD 0 可被构造；缺省值仍为 0。跨格式两个回归见 `vmess_parameters.rs`，先复现负值变 0，再通过格式/边界检查（`artifacts/vmess-parameters-before.log`、`artifacts/vmess-parameters-after.log`）。手机候选导入时也调用构造器校验 UUID/cipher/alterId；WS/gRPC、跳过证书验证及其它未支持字段继续拒绝。
