@@ -5,6 +5,54 @@ use tokio::{
     time::{sleep_until, Instant},
 };
 
+/// Reports local rebuild outcomes, never Internet reachability or error details
+/// that could contain node credentials or destination names.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Report {
+    state: &'static str,
+    attempts: u64,
+    failures: u64,
+    reason: Option<&'static str>,
+}
+impl Default for Report {
+    fn default() -> Self {
+        Self {
+            state: "idle",
+            attempts: 0,
+            failures: 0,
+            reason: None,
+        }
+    }
+}
+impl Report {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn begin(&mut self) {
+        self.state = "rebuilding";
+        self.attempts = self.attempts.saturating_add(1);
+        self.reason = None;
+    }
+    pub fn finish(&mut self, failure: Option<Failure>) {
+        self.state = if failure.is_some() { "failed" } else { "ready" };
+        self.reason = failure.map(|f| match f {
+            Failure::Geodata => "geodata-invalid",
+            Failure::Timeout => "timeout",
+            Failure::Reload => "reload-failed",
+        });
+        if failure.is_some() {
+            self.failures = self.failures.saturating_add(1);
+        }
+    }
+}
+#[derive(Clone, Copy)]
+pub enum Failure {
+    Geodata,
+    Timeout,
+    Reload,
+}
+
 pub struct Changes {
     receiver: mpsc::Receiver<()>,
     next_allowed: Instant,
@@ -37,6 +85,36 @@ impl Changes {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn report_distinguishes_rebuilding_failure_and_later_recovery() {
+        let mut report = Report::new();
+        assert_eq!(serde_json::to_value(&report).unwrap()["state"], "idle");
+        for (i, failure) in [Failure::Geodata, Failure::Timeout, Failure::Reload]
+            .into_iter()
+            .enumerate()
+        {
+            report.begin();
+            let pending = serde_json::to_value(&report).unwrap();
+            assert_eq!(pending["state"], "rebuilding");
+            assert!(pending["reason"].is_null());
+            report.finish(Some(failure));
+            let failed = serde_json::to_value(&report).unwrap();
+            assert_eq!(failed["state"], "failed");
+            assert_eq!(failed["failures"], i + 1);
+            assert_eq!(
+                failed["reason"],
+                ["geodata-invalid", "timeout", "reload-failed"][i]
+            );
+        }
+        report.begin();
+        report.finish(None);
+        let recovered = serde_json::to_value(&report).unwrap();
+        assert_eq!(recovered["state"], "ready");
+        assert_eq!(recovered["attempts"], 4);
+        assert_eq!(recovered["failures"], 3);
+        assert!(recovered["reason"].is_null());
+        assert_eq!(serde_json::to_value(Report::new()).unwrap()["failures"], 0);
+    }
     #[tokio::test(start_paused = true)]
     async fn last_change_inside_cooldown_is_delivered_without_another_event() {
         let (tx, mut changes) = channel();

@@ -51,7 +51,10 @@ impl Plan {
         if let Some(groups) = doc["proxy-groups"].as_sequence_mut() {
             for group in groups {
                 if group["name"].as_str() == Some(GROUP) {
-                    group["prism-health-initial-delay"] = 300.into();
+                    // Keep inherited availability during the short transition,
+                    // then measure the new path rather than trusting it for minutes.
+                    // A delay above one also enables Hub's guarded inheritance.
+                    group["prism-health-initial-delay"] = 2.into();
                 }
             }
         }
@@ -335,16 +338,14 @@ mod tests {
             .resolve(GROUP, &Address::Domain("payload.test".into(), 443))
             .unwrap();
         assert_eq!(chain, vec![GROUP.to_owned(), name("b")]);
-        // Network rebuilding must preserve B while deferring repeated checks.
+        // Preserve B until a fresh check on the new network completes.
         let mut rebuilt_profile = Profile::default();
         plan.apply(&mut rebuilt_profile).unwrap();
         rebuilt_profile.groups[0].url = "http://health.test/generate_204".into();
         let raw =
             serde_yaml::to_string(&prism_core::config::clash::emit(&rebuilt_profile)).unwrap();
         let raw = Plan::reload_payload(&raw).unwrap();
-        let parsed = prism_core::config::parse_any(&raw).unwrap();
-        assert_eq!(parsed.groups[0].health_initial_delay, 300);
-        hub.reload(Some(raw)).await.unwrap();
+        hub.reload(Some(raw.clone())).await.unwrap();
         let rebuilt = hub.core();
         let rebuilt_group = rebuilt.tunnel.reg.get(GROUP).unwrap();
         assert_eq!(rebuilt_group.as_group().unwrap().now(), name("b"));
@@ -362,7 +363,113 @@ mod tests {
         b.delay.store(180, Ordering::Relaxed);
         group.health_check().await;
         assert_eq!(group.now(), name("a"));
+        // A is no longer reachable on the new network. Do not manually invoke
+        // health_check: recovery must come from the rebuilt health worker.
+        a.fail.store(true, Ordering::Relaxed);
+        hub.reload(Some(Plan::reload_payload(&raw).unwrap()))
+            .await
+            .unwrap();
+        let recovered = hub.core();
+        let selected = recovered.tunnel.reg.get(GROUP).unwrap();
+        assert_eq!(selected.as_group().unwrap().now(), name("a"));
+        tokio::time::timeout(std::time::Duration::from_secs(4), async {
+            loop {
+                if selected.as_group().unwrap().now() == name("b") {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("network rebuild must recheck and replace the unreachable node promptly");
+        recovered.shutdown.cancel();
         core.shutdown.cancel();
+    }
+    #[tokio::test]
+    async fn network_rebuild_refreshes_fallback_and_balance_without_manual_probe() {
+        for policy in [Policy::Fallback, Policy::LoadBalance] {
+            let a = fixture(1).await;
+            let b = fixture(1).await;
+            b.fail.store(true, Ordering::Relaxed);
+            let plan = Plan {
+                candidates: vec![candidate("a", a.port), candidate("b", b.port)],
+                policy,
+                test_url: test_url(),
+                interval: 600,
+                tolerance: 0,
+            };
+            let mut p = Profile::default();
+            plan.apply(&mut p).unwrap();
+            p.groups[0].url = "http://health.test/generate_204".into();
+            p.groups[0].health_initial_delay = 300;
+            let raw = serde_yaml::to_string(&prism_core::config::clash::emit(&p)).unwrap();
+            let hub = Hub::new(Default::default(), ".".into(), p).await.unwrap();
+            let original = hub.core();
+            original
+                .tunnel
+                .reg
+                .get(GROUP)
+                .unwrap()
+                .as_group()
+                .unwrap()
+                .health_check()
+                .await;
+            // The new physical path reverses which endpoint is reachable.
+            a.fail.store(true, Ordering::Relaxed);
+            b.fail.store(false, Ordering::Relaxed);
+            hub.reload(Some(Plan::reload_payload(&raw).unwrap()))
+                .await
+                .unwrap();
+            let rebuilt = hub.core();
+            assert_eq!(
+                rebuilt.tunnel.reg.delays.known_alive(&name("a")),
+                Some(true)
+            );
+            assert_eq!(
+                rebuilt.tunnel.reg.delays.known_alive(&name("b")),
+                Some(false)
+            );
+            assert!(rebuilt.tunnel.reg.delays.history(&name("a")).is_empty());
+            tokio::time::timeout(std::time::Duration::from_secs(4), async {
+                loop {
+                    if rebuilt.tunnel.reg.delays.known_alive(&name("a")) == Some(false)
+                        && rebuilt.tunnel.reg.delays.known_alive(&name("b")) == Some(true)
+                    {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .expect("rebuilt worker must refresh inherited availability on the new path");
+            let target = Address::Domain("health.test".into(), 80);
+            for i in 0..32 {
+                let (_, chain) = rebuilt
+                    .tunnel
+                    .reg
+                    .resolve(GROUP, &Address::Domain(format!("payload{i}.test"), 80))
+                    .unwrap();
+                assert_eq!(chain.last(), Some(&name("b")));
+            }
+            let mut stream = rebuilt
+                .tunnel
+                .reg
+                .get(GROUP)
+                .unwrap()
+                .connect(&target)
+                .await
+                .unwrap();
+            stream
+                .write_all(
+                    b"GET /payload HTTP/1.1\r\nHost: health.test\r\nConnection: close\r\n\r\n",
+                )
+                .await
+                .unwrap();
+            let mut reply = Vec::new();
+            stream.read_to_end(&mut reply).await.unwrap();
+            assert!(reply.starts_with(b"HTTP/1.1 204"));
+            rebuilt.shutdown.cancel();
+        }
     }
     #[tokio::test]
     async fn fallback_and_sticky_balance_forward_and_preserve_availability_on_network_rebuild() {

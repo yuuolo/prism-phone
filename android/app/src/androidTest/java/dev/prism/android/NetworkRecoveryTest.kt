@@ -41,6 +41,10 @@ class NetworkRecoveryTest {
             if(current!=count){count=current;since=System.currentTimeMillis()}
             System.currentTimeMillis()-since>=4000
         }
+        val recovery=status().getJSONObject("networkRecovery")
+        assertEquals(recovery.toString(),"ready",recovery.getString("state"))
+        assertTrue(recovery.getLong("attempts")>=status().getLong("networkRebuilds"))
+        assertTrue(recovery.isNull("reason"))
     }
     private fun dns(host:String) {
         var result=JSONObject();repeat(3){if(!result.has("addresses"))result=JSONObject(CoreBridge.diagnose(JSONObject().put("kind","dns").put("host",host).toString()))}
@@ -70,6 +74,7 @@ class NetworkRecoveryTest {
         shell("appops set ${context.packageName} ACTIVATE_VPN allow")
         if(Build.VERSION.SDK_INT>=37)shell("pm grant ${context.packageName} ${LocalNetworkAccess.permission}")
         val wifiBefore=shell("settings get global wifi_on")
+        val dataBefore=shell("settings get global mobile_data")
         val manager=context.getSystemService(ConnectivityManager::class.java)
         fun physical(transport:Int)=manager.allNetworks.any{n->manager.getNetworkCapabilities(n)?.let{it.hasTransport(transport) && !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) && it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)}==true}
         fun wifi(enabled:Boolean) {
@@ -90,6 +95,9 @@ class NetworkRecoveryTest {
         val store=ProfileStore(context)
         try {
             wifi(true);waitFor("initial Wi-Fi"){physical(NetworkCapabilities.TRANSPORT_WIFI)}
+            // A cold emulator can retain mobile_data=1 before telephony has
+            // actually enabled its data network. Establish the test precondition.
+            shell("svc data enable")
             waitFor("emulator cellular network enabled"){physical(NetworkCapabilities.TRANSPORT_CELLULAR)}
             store.import("proxies: [{name: Recovery first, type: socks5, server: 10.0.2.2, port: 19092}, {name: Recovery exit, type: socks5, server: 127.0.0.1, port: 19090}]",false)
             val nodes=store.load().getJSONArray("nodes");val ids=(0 until nodes.length()).map{nodes.getJSONObject(it).getString("_id")}
@@ -116,6 +124,21 @@ class NetworkRecoveryTest {
             dns("example.net");applicationTls(port);assertEquals(session,status().getString("sessionId"))
             assertTrue(status().getLong("upload")>=upload);assertTrue(status().getLong("download")>=download)
             val cellUpload=status().getLong("upload");val cellDownload=status().getLong("download")
+            // Lose both physical transports, then recover without restarting
+            // the VPN or manually notifying JNI. Existing sockets may die;
+            // the session and routing policy must survive for new traffic.
+            before=status().getLong("networkRebuilds");shell("svc data disable")
+            waitFor("both physical transports offline",30000){!physical(NetworkCapabilities.TRANSPORT_WIFI) && !physical(NetworkCapabilities.TRANSPORT_CELLULAR)}
+            waitFor("OS callback rebuild on complete loss"){status().getLong("networkRebuilds")>before}
+            awaitSettledRecovery()
+            assertEquals(session,status().getString("sessionId"))
+            assertTrue(status().getBoolean("running"))
+            assertTrue(status().getLong("upload")>=cellUpload);assertTrue(status().getLong("download")>=cellDownload)
+            before=status().getLong("networkRebuilds");shell("svc data enable")
+            waitFor("cellular returns after complete loss",30000){physical(NetworkCapabilities.TRANSPORT_CELLULAR) && physicalDefaultUses(NetworkCapabilities.TRANSPORT_CELLULAR)}
+            waitFor("OS callback rebuild on physical recovery"){status().getLong("networkRebuilds")>before}
+            awaitSettledRecovery()
+            dns("www.example.com");applicationTls(port);assertEquals(session,status().getString("sessionId"))
             before=status().getLong("networkRebuilds");wifi(true)
             waitFor("Wi-Fi default returns",30000){physical(NetworkCapabilities.TRANSPORT_WIFI) && physicalDefaultUses(NetworkCapabilities.TRANSPORT_WIFI)}
             waitFor("OS callback rebuild on Wi-Fi"){status().getLong("networkRebuilds")>before}
@@ -125,7 +148,15 @@ class NetworkRecoveryTest {
             val buckets=JSONObject(CoreBridge.traffic()).getJSONArray("buckets")
             assertTrue((0 until buckets.length()).map{buckets.getJSONObject(it)}.any{it.getString("node")==ids[1] && it.getLong("upload")>0 && it.getLong("download")>0})
             assertTrue(status().getJSONObject("chain").getBoolean("enabled"))
+            context.startActivity(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            val device=androidx.test.uiautomator.UiDevice.getInstance(instrumentation)
+            androidx.test.uiautomator.UiScrollable(androidx.test.uiautomator.UiSelector().className("android.widget.ScrollView"))
+                .scrollIntoView(androidx.test.uiautomator.UiSelector().textContains("网络配置重建已完成"))
+            val completed=device.wait(androidx.test.uiautomator.Until.hasObject(androidx.test.uiautomator.By.textContains("网络配置重建已完成")),5000)
+            if(!completed) device.dumpWindowHierarchy(java.io.File(context.getExternalFilesDir(null),"recovery-dashboard-failure.xml"))
+            assertTrue("Dashboard must display the real rebuild completion",completed)
         }finally{
+            shell("svc data ${if(dataBefore=="0") "disable" else "enable"}")
             if(PrismVpnService.stage in listOf("正在连接","已连接")){context.startService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.DISCONNECT));waitFor("disconnected"){PrismVpnService.stage=="已断开"}}
             wifi(wifiBefore!="0")
             if(wifiBefore!="0")waitFor("restored Wi-Fi",30000){physical(NetworkCapabilities.TRANSPORT_WIFI)}

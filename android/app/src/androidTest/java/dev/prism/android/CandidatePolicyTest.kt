@@ -91,6 +91,17 @@ class CandidatePolicyTest {
                 assertTrue("$policy rebuild: ${CoreBridge.status()}",reset)
                 val resetCandidates=JSONObject(CoreBridge.status()).getJSONObject("automatic").getJSONArray("candidates")
                 assertTrue((0 until resetCandidates.length()).all{resetCandidates.getJSONObject(it).getJSONArray("history").length()==0})
+                // Rebuild must schedule a fresh check, without a manual probe or
+                // waiting for the configured ten-minute periodic interval.
+                val probeUntil=System.currentTimeMillis()+12000;var refreshed=false
+                while(System.currentTimeMillis()<probeUntil) {
+                    val c=JSONObject(CoreBridge.status()).getJSONObject("automatic").getJSONArray("candidates")
+                    if((c.getJSONObject(0).optJSONArray("history")?.length() ?: 0)>0 &&
+                        c.getJSONObject(0).optInt("delayMs",-1)==0 && c.getJSONObject(1).optInt("delayMs",0)>0){refreshed=true;break}
+                    Thread.sleep(100)
+                }
+                assertTrue("$policy rebuilt health worker: ${CoreBridge.status()}",refreshed)
+                tlsPayload()
                 val dns=JSONObject(CoreBridge.diagnose("{\"kind\":\"dns\",\"host\":\"example.com\"}"))
                 assertTrue("$policy proxy DNS: $dns",dns.has("addresses"))
             } finally {context.startService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.DISCONNECT));await("已断开")}

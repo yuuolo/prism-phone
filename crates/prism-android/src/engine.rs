@@ -30,6 +30,7 @@ struct Running {
     alive: Arc<AtomicBool>,
     changes: channel::Sender<()>,
     network_rebuilds: Arc<AtomicU64>,
+    recovery: Arc<Mutex<crate::recovery::Report>>,
     started: Instant,
     session_id: u64,
     node_name: String,
@@ -738,6 +739,8 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
         let (changes, mut changes_rx) = crate::recovery::channel();
         let network_rebuilds = Arc::new(AtomicU64::new(0));
         let rebuild_count = network_rebuilds.clone();
+        let recovery = Arc::new(Mutex::new(crate::recovery::Report::new()));
+        let recovery_worker = recovery.clone();
         let join = std::thread::spawn(move || {
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
                 || -> anyhow::Result<()> {
@@ -758,10 +761,14 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                             result = &mut tun => {result?; break;},
                             event = changes_rx.next() => {
                                 if event.is_none() {break}
+                                recovery_worker.lock().unwrap_or_else(|p|p.into_inner()).begin();
                                 if geo_used {
                                     let valid=geo_snapshot.as_ref().is_some_and(|s|s.verify(&geo_base).is_ok());
                                     geo_validation.store(valid,Ordering::Release);
-                                    if !valid {continue;}
+                                    if !valid {
+                                        recovery_worker.lock().unwrap_or_else(|p|p.into_inner()).finish(Some(crate::recovery::Failure::Geodata));
+                                        continue;
+                                    }
                                 }
                                 // Rebuild sockets and DNS; preserve the VPN fd and fake-IP mappings.
                                 let rebuilt = tokio::select! {
@@ -769,6 +776,12 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                                     r = tokio::time::timeout(Duration::from_secs(8),hub.reload(Some(reload.clone()))) => r,
                                 };
                                 if matches!(rebuilt,Ok(Ok(()))) {hub.core().tunnel.stats.close_all();rebuild_count.fetch_add(1,Ordering::Relaxed);}
+                                let failure = match rebuilt {
+                                    Ok(Ok(())) => None,
+                                    Ok(Err(_)) => Some(crate::recovery::Failure::Reload),
+                                    Err(_) => Some(crate::recovery::Failure::Timeout),
+                                };
+                                recovery_worker.lock().unwrap_or_else(|p|p.into_inner()).finish(failure);
                             }
                         }
                     }
@@ -797,6 +810,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_start(
                     alive,
                     changes,
                     network_rebuilds,
+                    recovery,
                     started,
                     session_id: NEXT_SESSION.fetch_add(1, Ordering::Relaxed),
                     node_name,
@@ -889,6 +903,7 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_status(
                 let connections = s.conns.lock().unwrap_or_else(|p| p.into_inner()).len();
                 json!({"running":r.alive.load(Ordering::Acquire),"upload":s.upload.load(Ordering::Relaxed),"download":s.download.load(Ordering::Relaxed),"tunReceived":received,"tunSent":sent,
                     "sessionId":r.session_id.to_string(),"uptimeMs":r.started.elapsed().as_millis() as u64,
+                    "networkRecovery":*r.recovery.lock().unwrap_or_else(|p|p.into_inner()),
                     "connections":connections,"nodeName":current_node_name(r),"directRules":r.direct_rules,"activeRules":r.active_rules,"defaultTarget":r.default_target,
                     "automatic":r.automatic.as_ref().map(|p|p.snapshot(&r.hub)).unwrap_or_else(||json!({"enabled":false})),"geodataValid":r.geo_valid.load(Ordering::Acquire),
                     "adblockEnabled":r.ads_enabled,"adsBlocked":s.ads_blocked.load(Ordering::Relaxed),"networkRebuilds":r.network_rebuilds.load(Ordering::Relaxed),"chain":r.chain.as_ref().map(|p|p.snapshot()).unwrap_or_else(||json!({"enabled":false}))})

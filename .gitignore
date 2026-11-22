@@ -9,6 +9,7 @@ src-tauri/binaries/
 android/.gradle/
 android/.kotlin/
 scripts/android/__pycache__/
+scripts/android/tests/__pycache__/
 android/local.properties
 android/.signing/
 android/**/build/

@@ -300,6 +300,17 @@ class MainActivity : Activity() {
                 dashboard?.text="内核运行中 · %02d:%02d:%02d\n%s\n活跃连接 %d\n策略：${MobileDefaults.modeName(routeMode)}模式 · %d 条启用规则\n当前出口：%s".format(
                     seconds/3600,seconds/60%60,seconds%60,speed,stats.getInt("connections"),stats.getInt("activeRules"),defaultTarget)
                 if(!stats.optBoolean("geodataValid",true)) dashboard?.append("\n地区数据校验失败，保留旧路由；请断开后更新地区数据。")
+                stats.optJSONObject("networkRecovery")?.let {recovery->
+                    when(recovery.optString("state")) {
+                        "rebuilding"->dashboard?.append("\n网络配置正在重建…")
+                        "ready"->dashboard?.append("\n网络配置重建已完成")
+                        "failed"->dashboard?.append(when(recovery.optString("reason")) {
+                            "geodata-invalid"->"\n网络重建被地区数据校验阻止"
+                            "timeout"->"\n网络重建超时，请检查网络或重新连接"
+                            else->"\n网络重建失败，请检查网络或重新连接"
+                        })
+                    }
+                }
             }
         }
     }

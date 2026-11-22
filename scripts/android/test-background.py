@@ -17,7 +17,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--adb", required=True)
     parser.add_argument("--serial", required=True)
-    parser.add_argument("--expected-avd", required=True, choices=["PrismPhoneCI", "PrismPhoneApi26"])
+    parser.add_argument("--expected-avd", required=True, choices=["PrismPhoneCI", "PrismPhoneApi26", "PrismAdvancedCI"])
     parser.add_argument("--seed-apk", required=True)
     parser.add_argument("--client", required=True)
     parser.add_argument("--ui-tool", required=True)
@@ -106,6 +106,9 @@ def main():
     avd = adb("emu", "avd", "name").splitlines()[0]
     if avd != args.expected_avd:
         raise RuntimeError("AVD identity differs; refusing to change fixture data")
+    package = shell("dumpsys", "package", "dev.prism.android")
+    if not re.search(r"^\s*flags=\[[^\]\r\n]*\bDEBUGGABLE\b", package, re.M):
+        raise RuntimeError("Only a debuggable fixture package may be reset")
     if idle_state()["forced"] or "UPDATES STOPPED" in shell("dumpsys", "battery"):
         raise RuntimeError("A pre-existing power override must be restored by its owner first")
     original_awake = "mWakefulness=Awake" in shell("dumpsys", "power")

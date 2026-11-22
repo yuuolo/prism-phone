@@ -46,6 +46,7 @@ jobs:
         run: cargo install cargo-ndk --version 4.0.0 --locked
       - name: Shared mobile policy tests
         run: |
+          python3 -m unittest discover -s scripts/android/tests -v
           cargo test -p prism-android --lib --locked
           cargo test -p prism-core --lib --test anytls_wire --test relay_tls_wire --test dns_fallback --test mobile_traffic --test dns_privacy_routing --test fake_ip_rules --test network_recovery --locked
       - name: Build Android native libraries

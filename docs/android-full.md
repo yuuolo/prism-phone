@@ -50,6 +50,10 @@ Beta.4 已交付的首次数据准备、默认开关、URL Test、三模式路�
 
 ## 当前交付说明
 
+2026-11-22 工作区切网恢复修复（尚未发布）：针对“连接不稳定、切网后异常”的反馈，将候选组网络重建后的首次健康检查由等待 300 秒改为 2 秒，保持常规检测间隔、用户配置及受限的节点可用性继承。此等待在 Beta.3 已存在，不能单独证明 Beta.8 独有退步；实际恢复还受事件节流、建核与探测耗时影响。三种策略的后台重测及恢复验收见[高级能力扩展](android-advanced.md)。原签名升级样本和公开更新通道未改动，真机条件仍缺失；未经用户指示不发布。
+
+同一工作区继续补充仪表盘真实状态：JNI `networkRecovery` 返回本会话重建的 idle/rebuilding/ready/failed、尝试与失败累计及固定原因码（地区数据校验、超时、一般重建错误），不返回底层错误、域名或节点凭据。状态在每次 VPN 会话重新初始化；原 `networkRebuilds` 仍仅统计成功重建。仪表盘显示重建中、完成或失败原因；“网络配置重建已完成”只描述本地内核配置重建，不代表互联网连通。配置格式、包名、签名与公开更新通道均未改变。
+
 2026-11-19 发布 `0.2.0-beta.8`（code 10，9 仅本地候选未发布），源码 `17ac37a` 的[发布 CI 44461176843](https://github.com/yuuolo/prism-phone/actions/runs/44461176843)全部通过：双架构 Debug/Release、双 Lint、37 项手机 Rust、102 项 Linux 共享内核回归、7 项 Android 单元测试、双系统各 25 项及各自独立 180 秒 Doze。后台原始报告已核对强制 IDLE、进程/VPN 不变、冷 DNS、严格 TLS/HTTP 200、断开不复活及断开对照拒绝。原签名包从 Beta.7 code 8 经未发布候选 9、最终 10 连续通过应用按钮及系统 Only this time/Update 覆盖，保留原 Beta.2 的 UID、Keystore、节点/凭据/来源/收藏/选择与规则；应用包含名单及旧默认 DNS 保留，安装来源仍为 Ask every time。安装从已校验缓存开始，不算作本次线上检查/下载验收。最终 CI ZIP 官方摘要核对通过；两个仓库公开 APK、校验和及各自更新地址已回读一致，桌面 latest 仍为 v0.2.13。[发布说明](releases/android-0.2.0-beta.8.md)。
 
 2026-11-19 发布 `0.2.0-beta.7`（code 8），源码 `410f29a` 的[发布 CI 44451687529](https://github.com/yuuolo/prism-phone/actions/runs/44451687529)全部通过：双架构 Debug/Release、双 Lint、34 项手机 Rust、101 项 Linux 共享内核回归、7 项 Android 单元测试、双系统各 23 项完整回归及各自独立 180 秒 Doze。两份后台报告已核对强制 IDLE、原进程与 VPN 不变、冷 DNS、严格 TLS/HTTP 200 和断开对照。原签名发布包从 Beta.6 经应用按钮及系统 Only this time/Update 覆盖，延续原 Beta.2 的 UID、Keystore、节点/凭据/来源/收藏/选择与规则；实际界面保存的应用包含名单也保留，主页范围提示核对通过。来源仍为 Ask every time，安装从已校验缓存开始，不算作本次线上检查/下载验收。新旧仓库公开 APK、校验和及各自下载地址的更新清单均已回读一致，桌面 latest 仍为 v0.2.13。[发布说明](releases/android-0.2.0-beta.7.md)。
