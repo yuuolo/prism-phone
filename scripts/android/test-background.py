@@ -23,6 +23,7 @@ def main():
     parser.add_argument("--ui-tool", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--idle-seconds", type=int, default=180)
+    parser.add_argument("--vmess", action="store_true", help="Use the independent VMess server chain fixture")
     args = parser.parse_args()
     if not re.fullmatch(r"emulator-[0-9]+", args.serial) or not 20 <= args.idle_seconds <= 3600:
         parser.error("Use an owned emulator serial and an idle duration in 20..3600")
@@ -116,15 +117,17 @@ def main():
         if not Path(path).is_file():
             raise RuntimeError("Missing acceptance input")
 
-    report = {"serial": args.serial, "avd": avd, "idleSeconds": args.idle_seconds, "ok": False}
+    report = {"serial": args.serial, "avd": avd, "idleSeconds": args.idle_seconds, "mode": "vmess-chain" if args.vmess else "basic-chain", "ok": False}
     phase = "setup"
     power_changed = False
     succeeded = False
     try:
         adb("install", "-r", args.seed_apk)
         shell("am", "force-stop", "dev.prism.android")
-        seed = shell("am", "instrument", "-w", "dev.prism.android.test/dev.prism.android.BackgroundSeedInstrumentation")
-        if "backgroundFixture=seeded-cold-dns-v1" not in seed:
+        seed_args = ["-e", "vmess", "true"] if args.vmess else []
+        seed = shell("am", "instrument", "-w", *seed_args, "dev.prism.android.test/dev.prism.android.BackgroundSeedInstrumentation")
+        marker = "seeded-vmess-cold-dns-v1" if args.vmess else "seeded-cold-dns-v1"
+        if f"backgroundFixture={marker}" not in seed:
             raise RuntimeError("Seed runner did not prepare the disposable fixture")
         shell("am", "force-stop", "dev.prism.android")
         wait_for("seed process exits", lambda: not pid())

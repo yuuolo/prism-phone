@@ -242,8 +242,13 @@ fn parse_vmess(line: &str) -> Result<ProxyConfig> {
         Some(serde_json::Value::Number(n)) => Some(n.to_string()),
         _ => None,
     };
+    let alter_id = if v.get("aid").is_some() {
+        st("aid").ok_or_else(|| anyhow!("vmess: invalid aid"))?
+            .parse::<u32>().map_err(|_| anyhow!("vmess: invalid or out-of-range aid"))?
+    } else { 0 };
     let server = st("add").ok_or_else(|| anyhow!("vmess: missing add"))?;
     let port: u16 = st("port").and_then(|p| p.parse().ok()).ok_or_else(|| anyhow!("vmess: bad port"))?;
+    if port == 0 { bail!("vmess: port must be nonzero"); }
     let mut net = st("net").filter(|n| n != "tcp" && n != "raw");
     // tcp with an HTTP header ("obfs") is a different transport.
     if net.is_none() && st("type").as_deref() == Some("http") {
@@ -253,7 +258,7 @@ fn parse_vmess(line: &str) -> Result<ProxyConfig> {
         name: st("ps").unwrap_or_else(|| format!("{server}:{port}")),
         kind: Some(ProxyKind::Vmess),
         uuid: st("id"),
-        alter_id: st("aid").and_then(|a| a.parse().ok()).unwrap_or(0),
+        alter_id,
         cipher: st("scy").or(Some("auto".into())),
         tls: st("tls").as_deref() == Some("tls"),
         sni: st("sni"),

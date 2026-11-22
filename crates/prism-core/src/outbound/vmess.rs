@@ -1,5 +1,5 @@
 //! VMess client with the AEAD header (what current V2Ray / Xray / sing-box
-//! servers require; `alterId` is ignored).
+//! servers require; legacy nonzero `alterId` is rejected).
 //!
 //! Request: `auth_id[16] | seal(header_len) | conn_nonce[8] | seal(header)`,
 //! keys from the nested-HMAC KDF over the command key
@@ -38,6 +38,7 @@ const SEC_CHACHA20: u8 = 4;
 const SEC_NONE: u8 = 5;
 const TAG: usize = 16;
 const MAX_CHUNK: usize = 15000;
+const MAX_FRAME_LEN: usize = 16384;
 
 // ------------------------------------------------------------- KDF
 
@@ -202,6 +203,20 @@ impl Body {
         out
     }
 
+    fn encode_datagram(&mut self, plain: &[u8]) -> io::Result<Vec<u8>> {
+        if plain.is_empty() {
+            return Err(invalid("vmess: empty UDP datagram is indistinguishable from stream EOF"));
+        }
+        if plain.len() > MAX_FRAME_LEN {
+            return Err(invalid("vmess: UDP datagram exceeds the standard frame length"));
+        }
+        let frame = self.encode(plain);
+        if frame.len() > 2 + MAX_FRAME_LEN {
+            return Err(invalid("vmess: UDP datagram plus authentication and padding exceeds the standard frame length"));
+        }
+        Ok(frame)
+    }
+
     /// The next chunk's data; None at the end of the stream.
     async fn read<R: AsyncRead + Unpin>(&mut self, r: &mut R) -> io::Result<Option<Vec<u8>>> {
         let len = match r.read_u16().await {
@@ -334,6 +349,7 @@ pub struct Vmess {
 
 impl Vmess {
     pub fn new(p: &ProxyConfig, dialer: Dialer) -> anyhow::Result<Self> {
+        anyhow::ensure!(p.alter_id == 0, "{}: VMess AEAD requires alterId 0; legacy authentication is unsupported", p.name);
         let uuid = uuid::Uuid::parse_str(p.uuid.as_deref().unwrap_or("")).map_err(|_| anyhow::anyhow!("{}: invalid uuid", p.name))?;
         let security = match p.cipher.as_deref().unwrap_or("auto").to_ascii_lowercase().as_str() {
             "" | "auto" | "aes-128-gcm" => SEC_AES128_GCM,
@@ -453,7 +469,7 @@ impl Outbound for Vmess {
             });
             let res: io::Result<()> = async {
                 while let Some(p) = out.recv().await {
-                    wr.write_all(&w.encode(&p[..p.len().min(u16::MAX as usize - 200)])).await?;
+                    wr.write_all(&w.encode_datagram(&p)?).await?;
                     wr.flush().await?;
                 }
                 Ok(())
@@ -469,6 +485,68 @@ impl Outbound for Vmess {
 mod tests {
     use super::*;
     use hmac::Mac;
+
+    #[test]
+    fn legacy_alter_id_must_not_be_silently_sent_as_aead() {
+        let p = ProxyConfig {
+            name: "legacy".into(), server: "127.0.0.1".into(), port: 12345,
+            uuid: Some("0b6a0b4e-1111-4222-8333-444455556666".into()),
+            alter_id: 64, ..Default::default()
+        };
+        assert!(Vmess::new(&p, Dialer::Direct).is_err());
+    }
+
+    #[tokio::test]
+    async fn unrepresentable_udp_closes_without_sending_a_truncated_datagram() {
+        use tokio::net::TcpListener;
+        for size in [MAX_FRAME_LEN + 1, 65535, 0] {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let capture = tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut wire = Vec::new();
+                stream.read_to_end(&mut wire).await.unwrap();
+                wire
+            });
+            let node = Vmess::new(&ProxyConfig {
+                name: "udp-boundary".into(), server: "127.0.0.1".into(), port,
+                uuid: Some("0b6a0b4e-1111-4222-8333-444455556666".into()),
+                ..Default::default()
+            }, Dialer::Direct).unwrap();
+            let mut pipe = node.connect_udp(&Address::new("127.0.0.1", 12345)).await.unwrap();
+            pipe.tx.send(vec![7; size]).await.unwrap();
+            assert!(tokio::time::timeout(std::time::Duration::from_secs(2), pipe.rx.recv())
+                .await.expect("invalid UDP must close the session").is_none());
+            let wire = tokio::time::timeout(std::time::Duration::from_secs(2), capture)
+                .await.unwrap().unwrap();
+            // The AEAD request header may be sent by open(), but no payload
+            // frame (including an EOF-shaped empty datagram) may follow it.
+            let header_max = 16 + 18 + 8 + (41 + 4 + 15 + 4) + 16;
+            assert!(wire.len() <= header_max, "invalid UDP wrote payload: {size}/{}", wire.len());
+        }
+    }
+
+    #[tokio::test]
+    async fn udp_bounds_preserve_complete_valid_payloads_for_each_body_cipher() {
+        for sec in [SEC_NONE, SEC_AES128_GCM, SEC_CHACHA20] {
+            let options = if sec == SEC_NONE { OPT_CHUNK_STREAM }
+                else { OPT_CHUNK_STREAM | OPT_CHUNK_MASKING | OPT_GLOBAL_PADDING };
+            let size = if sec == SEC_NONE { MAX_FRAME_LEN } else { MAX_FRAME_LEN - TAG - 63 };
+            let payload: Vec<u8> = (0..size).map(|i| (i % 251) as u8).collect();
+            let mut writer = Body::new(sec, options, &[3; 16], &[9; 16]);
+            let wire = writer.encode_datagram(&payload).unwrap();
+            assert!(wire.len() <= 2 + MAX_FRAME_LEN);
+            let mut reader = Body::new(sec, options, &[3; 16], &[9; 16]);
+            assert_eq!(reader.read(&mut wire.as_slice()).await.unwrap(), Some(payload));
+            assert!(writer.encode_datagram(&[]).is_err());
+            assert!(writer.encode_datagram(&vec![0; MAX_FRAME_LEN + 1]).is_err());
+        }
+        // This size fits the plaintext frame, but cannot fit an AEAD tag even
+        // with zero padding. The actual encoded length, not a truncated prefix,
+        // determines rejection.
+        let mut encrypted = Body::new(SEC_AES128_GCM, OPT_CHUNK_STREAM, &[3; 16], &[9; 16]);
+        assert!(encrypted.encode_datagram(&vec![0; MAX_FRAME_LEN]).is_err());
+    }
 
     #[test]
     fn checksums_and_kdf() {

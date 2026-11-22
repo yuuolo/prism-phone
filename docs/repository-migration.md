@@ -10,6 +10,10 @@ Beta.4 后手机候选组扩展 fallback/按目标负载均衡与自定义 HTTPS
 
 `crates/prism-core` 同步自上述提交，是手机端独立构建使用的源码快照。后续同步桌面修复时，需在提交说明记录来源提交并通过手机策略、VPN 和 DNS 测试；手机改动不自动同步到桌面。
 
+2026-11-22 VMess 接入准备修正手机快照的 `outbound/vmess.rs`：仅实现 AEAD 时明确拒绝非零 `alterId`，避免静默忽略旧式认证参数。新增独立 Xray/V2Fly 服务端 TCP/UDP 互通测试；实际范围和仍未通过的 V2Fly 大 UDP 报文见 [VMess 接入验收](android-vmess.md)。此修正未同步桌面仓库。后续本地手机候选开放 AEAD TCP/TLS，并通过 API 26/37 的独立服务端 TUN 专项，仍未发布；Beta.9 恢复修复候选不包含 VMess。
+
+随后修正 VMess UDP 超长报文被取前缀发送的问题，按实际帧长度拒绝无法完整表示的报文；Clash、sing-box、分享链接三条 VMess `alterId` 解析路径不再将畸形或溢出值转为 0。合法值保留供 AEAD 构造器判断；其它协议的字段路径保持原逻辑。同步上游时保留真实字节捕获、合法边界、三格式参数与独立服务端回归。
+
 手机端后续局部扩展：`crates/prism-core/src/tunnel.rs` 增加按实际出口与规则类别的累计载荷计数，供跨会话历史统计使用，累计量跨连接结束和 Hub 重载保留。该扩展仅存在于手机仓库，未同步修改桌面仓库；`mobile_traffic` 真实 TCP/UDP 与手机 VPN/DNS 验收用于检查兼容性。
 
 ## 更新入口

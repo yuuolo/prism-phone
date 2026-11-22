@@ -51,7 +51,7 @@ class ChainActivity:Activity() {
             root.addView(text("显式配置 2–4 个节点，按前置 → 中继 → 后置顺序连接。重复节点/服务器端点、嵌套 dialer、不支持的协议或证书设置会拒绝。与自动优选暂不同时启用；更改须先断开 VPN。",13f))
             root.addView(CheckBox(this).apply {text="启用链式代理";contentDescription="启用链式代理";isChecked=enabled;setOnCheckedChangeListener {_,yes->enabled=yes}})
             root.addView(CheckBox(this).apply {text="允许此链路承载 UDP";contentDescription="链式 UDP";isChecked=udp;setOnCheckedChangeListener {_,yes->udp=yes}})
-            root.addView(text("UDP 需整条路径及服务器支持。HTTP 自身不能承载原生 UDP；AnyTLS/Trojan/VLESS 可通过前段 TCP 承载 UDP。保存时检查顺序；关闭 UDP 只拒绝走链的 UDP，普通直连规则仍生效。",12f))
+            root.addView(text("UDP 需整条路径及服务器支持。HTTP 自身不能承载原生 UDP；AnyTLS/Trojan/VLESS/VMess 可通过前段 TCP 承载 UDP。保存时检查顺序；关闭 UDP 只拒绝走链的 UDP，普通直连规则仍生效。",12f))
             for((index,id) in hops.withIndex()) {
                 val node=entries.firstOrNull {it.getString("_id")==id};val role=if(index==0) "前置" else if(index==hops.lastIndex) "后置" else "中继"
                 root.addView(text("${index+1}. $role：${node?.let {MergedNodes.display(it)} ?: "已移除节点，请删除此跳"}",17f))

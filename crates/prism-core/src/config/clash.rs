@@ -76,16 +76,25 @@ pub fn parse_proxy(m: &Mapping) -> Result<ProxyConfig> {
         _ => None,
     };
     let pm = peer.unwrap_or(m);
+    let raw_port = n(pm, "port").or_else(|| n(m, "port"));
+    let port = if kind == ProxyKind::Vmess {
+        raw_port.and_then(|p| u16::try_from(p).ok()).filter(|p| *p != 0)
+            .ok_or_else(|| anyhow::anyhow!("proxy {name}: invalid or out-of-range VMess port"))?
+    } else { raw_port.unwrap_or(0) as u16 };
+    let alter_id = if kind == ProxyKind::Vmess && m.contains_key("alterId") {
+        let value = n(m, "alterId").ok_or_else(|| anyhow::anyhow!("proxy {name}: invalid VMess alterId"))?;
+        u32::try_from(value).map_err(|_| anyhow::anyhow!("proxy {name}: VMess alterId exceeds u32"))?
+    } else { n(m, "alterId").unwrap_or(0) as u32 };
     let mut p = ProxyConfig {
         name,
         kind: Some(kind),
         server: s(pm, "server").or_else(|| s(m, "server")).unwrap_or_default(),
-        port: n(pm, "port").or_else(|| n(m, "port")).unwrap_or(0) as u16,
+        port,
         username: s(m, "username"),
         password: s(m, "password"),
         uuid: s(m, "uuid"),
         cipher: s(m, "cipher"),
-        alter_id: n(m, "alterId").unwrap_or(0) as u32,
+        alter_id,
         tls: b(m, "tls"),
         sni: s(m, "sni").or_else(|| s(m, "servername")),
         skip_cert_verify: b(m, "skip-cert-verify"),

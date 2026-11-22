@@ -20,7 +20,7 @@ impl Plan {
         for hop in &self.hops {
             udp = match hop.node.kind() {
                 ProxyKind::Http => false,
-                ProxyKind::AnyTls | ProxyKind::Trojan | ProxyKind::Vless => true, // UDP carried over the previous TCP path.
+                ProxyKind::AnyTls | ProxyKind::Trojan | ProxyKind::Vless | ProxyKind::Vmess => true, // UDP carried over the previous TCP path.
                 ProxyKind::Socks5 | ProxyKind::Shadowsocks => udp, // Native UDP needs a UDP carrier before this hop.
                 _ => false,
             };
@@ -451,7 +451,12 @@ mod tests {
                 let _ = tokio::time::timeout(Duration::from_secs(3), acceptor.accept(s)).await;
             }
         });
-        for kind in [ProxyKind::AnyTls, ProxyKind::Trojan, ProxyKind::Vless] {
+        for kind in [
+            ProxyKind::AnyTls,
+            ProxyKind::Trojan,
+            ProxyKind::Vless,
+            ProxyKind::Vmess,
+        ] {
             let mut last = hop("tls", port, kind);
             last.node.tls = true;
             last.node.sni = Some("localhost".into());
@@ -480,7 +485,7 @@ mod tests {
             assert!(first.hub.core().tunnel.stats.upload.load(Ordering::Relaxed) > before);
             root.core().shutdown.cancel();
         }
-        assert_eq!(attempts.load(Ordering::Relaxed), 3);
+        assert_eq!(attempts.load(Ordering::Relaxed), 4);
         first.proxy.take().unwrap().stop().await;
         first.hub.core().shutdown.cancel();
         server.abort();

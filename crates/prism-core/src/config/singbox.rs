@@ -959,6 +959,28 @@ pub fn parse(v: &Value) -> Result<Profile> {
                 continue;
             }
         };
+        let raw_port = ob.get("server_port").and_then(|x| x.as_u64());
+        let port = if kind == ProxyKind::Vmess {
+            match raw_port.and_then(|p| u16::try_from(p).ok()).filter(|p| *p != 0) {
+                Some(port) => port,
+                None => {
+                    p.warnings.push(format!("outbound {tag}: invalid or out-of-range VMess server_port"));
+                    continue;
+                }
+            }
+        } else { raw_port.unwrap_or(0) as u16 };
+        let alter_id = if kind == ProxyKind::Vmess {
+            match ob.get("alter_id") {
+                None => 0,
+                Some(value) => match value.as_u64().and_then(|n| u32::try_from(n).ok()) {
+                    Some(n) => n,
+                    None => {
+                        p.warnings.push(format!("outbound {tag}: invalid or out-of-range VMess alter_id"));
+                        continue;
+                    }
+                }
+            }
+        } else { ob.get("alter_id").and_then(|x| x.as_u64()).unwrap_or(0) as u32 };
         let tls = ob.get("tls").cloned().unwrap_or(Value::Null);
         let tr = ob.get("transport").cloned().unwrap_or(Value::Null);
         let reality = tls.get("reality").cloned().unwrap_or(Value::Null);
@@ -966,12 +988,12 @@ pub fn parse(v: &Value) -> Result<Profile> {
             name: tag,
             kind: Some(kind),
             server: st(ob, "server").unwrap_or_default(),
-            port: ob.get("server_port").and_then(|x| x.as_u64()).unwrap_or(0) as u16,
+            port,
             username: st(ob, "username"),
             password: st(ob, "password"),
             uuid: st(ob, "uuid"),
             cipher: st(ob, "method").or_else(|| st(ob, "security")),
-            alter_id: ob.get("alter_id").and_then(|x| x.as_u64()).unwrap_or(0) as u32,
+            alter_id,
             tls: tls.get("enabled").and_then(|x| x.as_bool()).unwrap_or(false),
             sni: st(&tls, "server_name"),
             skip_cert_verify: tls.get("insecure").and_then(|x| x.as_bool()).unwrap_or(false),

@@ -39,6 +39,7 @@ pub(crate) fn supported(node: &ProxyConfig) -> bool {
             | ProxyKind::Shadowsocks
             | ProxyKind::Trojan
             | ProxyKind::Vless
+            | ProxyKind::Vmess
             | ProxyKind::Socks5
             | ProxyKind::Http
     ) && node.dialer_proxy.is_none()
@@ -49,6 +50,9 @@ pub(crate) fn supported(node: &ProxyConfig) -> bool {
         && !node.skip_cert_verify
         && !node.server.is_empty()
         && node.port != 0
+        && (node.kind() != ProxyKind::Vmess
+            || prism_core::outbound::build_proxy(node, prism_core::outbound::Dialer::Direct)
+                .is_ok())
 }
 pub fn import(raw: &str) -> Result<Import> {
     ensure!(
@@ -70,7 +74,7 @@ pub fn import(raw: &str) -> Result<Import> {
             keep
         })
         .collect::<Vec<_>>();
-    ensure!(!nodes.is_empty(), "没有首版支持的节点：仅支持基础 TCP/TLS AnyTLS、SS、Trojan、VLESS、SOCKS5、HTTP，且须校验证书");
+    ensure!(!nodes.is_empty(), "没有支持的节点：基础 TCP/TLS AnyTLS、SS、Trojan、VLESS、VMess AEAD、SOCKS5、HTTP，且须校验证书");
     Ok(Import { nodes, skipped })
 }
 pub fn build(s: Session) -> Result<(Profile, String)> {
@@ -168,6 +172,43 @@ mod tests {
         n.network = Some("xhttp".into());
         assert!(!supported(&n));
         assert!(import("proxies: []").is_err());
+    }
+    #[test]
+    fn vmess_candidate_preserves_parameters_and_rejects_invalid_authentication() {
+        for cipher in ["auto", "aes-128-gcm", "chacha20-poly1305", "none", "zero"] {
+            let imported=import(&format!("proxies: [{{name: vm, type: vmess, server: 127.0.0.1, port: 443, uuid: 0b6a0b4e-1111-4222-8333-444455556666, alterId: 0, cipher: {cipher}}}]" )).unwrap();
+            assert_eq!(imported.skipped, 0);
+            let n = imported.nodes.into_iter().next().unwrap();
+            let (p, _) = build(Session {
+                node: n.clone(),
+                direct: vec![],
+                routing: None,
+                automatic: None,
+                geodata: None,
+                adblock: None,
+                chain: None,
+                dns: None,
+            })
+            .unwrap();
+            assert_eq!(p.proxies[0].kind(), ProxyKind::Vmess);
+            assert_eq!(p.proxies[0].uuid, n.uuid);
+            assert_eq!(p.proxies[0].cipher, n.cipher);
+            let mut invalid = n.clone();
+            invalid.uuid = Some("bad-uuid".into());
+            assert!(!supported(&invalid));
+            invalid = n.clone();
+            invalid.alter_id = 64;
+            assert!(!supported(&invalid));
+            invalid = n.clone();
+            invalid.cipher = Some("unsupported".into());
+            assert!(!supported(&invalid));
+            invalid = n.clone();
+            invalid.network = Some("ws".into());
+            assert!(!supported(&invalid));
+            invalid = n;
+            invalid.skip_cert_verify = true;
+            assert!(!supported(&invalid));
+        }
     }
     #[test]
     fn mobile_dns_is_proxy_only_and_ipv6_cannot_bypass() {
