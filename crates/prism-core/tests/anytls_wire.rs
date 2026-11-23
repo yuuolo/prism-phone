@@ -113,6 +113,8 @@ async fn padded_records(fingerprint: Option<&str>) {
     let addr = l.local_addr().unwrap();
     let payload = Arc::new(Mutex::new(Vec::new()));
     let got = payload.clone();
+    let first_payload = Arc::new(Mutex::new(0usize));
+    let first_received = first_payload.clone();
     tokio::spawn(async move {
         let (tcp, _) = l.accept().await.unwrap();
         let mut s = tls.accept(tcp).await.unwrap();
@@ -120,11 +122,16 @@ async fn padded_records(fingerprint: Option<&str>) {
         let (cmd, _, settings) = read_frame(&mut s).await.unwrap();
         assert_eq!(cmd, CMD_SETTINGS);
         assert!(String::from_utf8_lossy(&settings).contains("padding-md5="));
+        *first_received.lock().unwrap() = 7 + settings.len();
         let mut seen_dest = false;
         while let Ok((cmd, _, d)) = read_frame(&mut s).await {
             match cmd {
-                CMD_PSH if !seen_dest => seen_dest = true,
+                CMD_PSH if !seen_dest => {
+                    *first_received.lock().unwrap() += 7 + d.len();
+                    seen_dest = true;
+                }
                 CMD_PSH => got.lock().unwrap().extend_from_slice(&d),
+                CMD_SYN if !seen_dest => *first_received.lock().unwrap() += 7 + d.len(),
                 CMD_SYN | CMD_WASTE | CMD_FIN => {}
                 other => panic!("unexpected frame {other}"),
             }
@@ -146,8 +153,13 @@ async fn padded_records(fingerprint: Option<&str>) {
     let auth = recs.iter().position(|l| *l == 34 + 30 + TLS_OVERHEAD).unwrap_or_else(|| panic!("no auth record: {recs:?}"));
     let plain: Vec<usize> = recs[auth + 1..].iter().map(|l| l - TLS_OVERHEAD).collect();
     assert!(plain.len() >= 4, "{plain:?}");
-    // Packet 1 (settings, SYN, destination): 100-400 filled up.
-    assert!((100..400).contains(&plain[0]), "{plain:?}");
+    // A waste frame requires a seven-byte header plus positive payload.
+    // If the chosen size leaves <=7 bytes, the original payload is sent
+    // unchanged (also covered by padding_cuts_and_fills). Do not mistake
+    // this valid boundary for a random padding failure.
+    let initial = *first_payload.lock().unwrap();
+    assert!((100..400).contains(&plain[0]) ||
+        (plain[0] == initial && (93..100).contains(&initial)), "{plain:?}, initial={initial}");
     // Packet 2 ("a"): 400-500, then the check stops it.
     assert!((400..500).contains(&plain[1]), "{plain:?}");
     // Packet 3 ("b"): 9-9 holds the 8 bytes as they are, then 500-1000

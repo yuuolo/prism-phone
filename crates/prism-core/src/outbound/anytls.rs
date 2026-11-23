@@ -676,6 +676,16 @@ mod tests {
         let r = records(b"abc", &[Step::Size(9, 9)]).await;
         assert_eq!(r, [b"abc".to_vec()]);
 
+        // The initial handshake can be 96 bytes. Every random size from
+        // 100 through 103 leaves too little room for a waste frame.
+        let handshake = vec![42u8; 96];
+        for size in 96..=104 {
+            let r = records(&handshake, &[Step::Size(size, size)]).await;
+            assert_eq!(r.len(), 1);
+            assert_eq!(&r[0][..96], handshake.as_slice());
+            assert_eq!(r[0].len(), if size <= 103 { 96 } else { 104 });
+        }
+
         // Payload gone: the check stops; without a check, a record of waste.
         let c = [Step::Size(100, 100), Step::Check, Step::Size(50, 50)];
         assert_eq!(records(b"abc", &c).await.len(), 1);
