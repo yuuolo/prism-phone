@@ -2,7 +2,7 @@
 
 Prism 手机端独立仓库。当前交付 Android Beta，原生 Kotlin 界面、Android VpnService 和 Rust 内核。桌面端在 [yuuolo/prism](https://github.com/yuuolo/prism)。iOS/iPadOS 与 HarmonyOS NEXT 暂停开发。
 
-当前版本：[Android 0.2.0-beta.8](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.8)，包含原规划 11 项功能，以及候选组策略、自定义检测地址、按应用 VPN 分流和真实节点质量曲线和高级 DNS；[发布说明](docs/releases/android-0.2.0-beta.8.md)。新增七项高级目标尚未全部完成，见[高级路线](docs/android-advanced.md)。沿用原签名，兼容既有 Beta 覆盖升级。真机验收尚未完成，仍非稳定版。
+当前版本：[Android 0.2.0-beta.9](https://github.com/yuuolo/prism-phone/releases/tag/android-v0.2.0-beta.9)，包含原规划 11 项功能，以及候选组策略、自定义检测地址、按应用 VPN 分流和真实节点质量曲线和高级 DNS；[发布说明](docs/releases/android-0.2.0-beta.9.md)。新增七项高级目标尚未全部完成，见[高级路线](docs/android-advanced.md)。沿用原签名，兼容既有 Beta 覆盖升级。真机验收尚未完成，仍非稳定版。
 
 - [Android 功能、构建和验证](android/README.md)
 - [完整版功能范围与验收标准](docs/android-full.md)：区分 Beta 已交付功能、软件验收与剩余真机条件。
@@ -25,3 +25,5 @@ bash android/gradlew -p android assembleDebug
 仓库包含固定来源的 `prism-core` 源码快照，可独立构建，无需相邻的桌面仓库。版本与桌面端独立发布。应用包名和发布证书保持一致，以支持覆盖升级；签名密钥不进入仓库或 CI。
 
 Beta.5 已发布高级扩展第一批：候选组 url-test、fallback、按目标粘性负载均衡及自定义 HTTPS 检测地址。新增七项高级目标尚未全部完成，见[高级能力路线](docs/android-advanced.md)。原签名和旧版升级通道继续兼容。
+
+Beta.9 优先修复切网后的候选健康重测与恢复状态；不包含仍在隔离验收的 VMess。
