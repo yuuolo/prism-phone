@@ -2,6 +2,8 @@
 
 本地开发候选已开放 TCP/TLS VMess AEAD 导入；已公开的 Beta.9 网络恢复修复包不包含此功能。只有独立服务端互通与 Android TUN 验收同时通过才计入候选证据，不能把共享内核实现当作已发布。包名、签名及更新通道未更改；iOS 与 HarmonyOS NEXT 暂停。
 
+开发分支已合入 Beta.9 发布基线，候选 versionCode 12 / 0.2.0-beta.10，尚未发布。code 12 本地 JVM、Debug/Release、双 Lint 与 Release 16 KiB 对齐通过（`artifacts/vmess-code12-build.log`）；必须继续完成新候选 CI 和原签名升级验收，不能将较早 code 10 候选的 CI 当作本版本安装包的证明。
+
 ## Android 专项实测
 
 本地候选 40 项手机 Rust、7 项 JVM、双架构 JNI、Debug/Release 与双 Lint 通过。Android 8 / API 26 对接 Xray 26.11.9，Android 17 / API 37 / 16 KiB 对接 V2Fly 5.53.0，分别通过 `VmessTest.independentVmessTunDnsGroupsChainAndRecovery`（31.086 秒、42.125 秒）。API 26 测试 auto、aes-128-gcm、chacha20-poly1305，API 37 另测 none、zero；每轮断开后修改两处节点 cipher，并断言修改数量。
