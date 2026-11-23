@@ -41,6 +41,8 @@ class VmessTest {
         }
     }
     private fun tls(proxy:Int?=null) {
+        val before=status().optLong("networkRebuilds",-1)
+        try {
         Socket().use {transport->
             transport.soTimeout=8000;transport.connect(InetSocketAddress(if(proxy==null)"1.1.1.1" else "127.0.0.1",proxy ?: 443),4000)
             if(proxy!=null) {
@@ -55,6 +57,10 @@ class VmessTest {
                 val reply=ByteArray(12);DataInputStream(socket.getInputStream()).readFully(reply)
                 assertTrue(String(reply,Charsets.US_ASCII).startsWith("HTTP/"))
             }
+        }
+        } catch(error:Exception) {
+            val after=runCatching{status()}.getOrDefault(JSONObject())
+            throw IOException("VMess TLS probe failed; stage=${PrismVpnService.stage}; networkRebuilds=$before->${after.optLong("networkRebuilds",-1)}; recovery=${after.optJSONObject("networkRecovery")}",error)
         }
     }
     private fun traffic(nodeId:String) {

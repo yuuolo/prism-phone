@@ -39,6 +39,7 @@ adb shell am instrument -w -e vmessCiphers "$vmess_ciphers" dev.prism.android.te
 adb logcat -d > emulator-results/logcat.txt
 adb exec-out screencap -p > emulator-results/screen.png
 adb pull /sdcard/Android/data/dev.prism.android/files/screenshots emulator-results/screenshots || true
+adb pull /sdcard/Android/data/dev.prism.android/files/vmess-acceptance.json emulator-results/vmess-acceptance.json || true
 grep -Eq '^OK \([0-9]+ tests?\)' emulator-results/instrumentation.txt
 if [ -n "${2:-}" ]; then
   python3 -u scripts/android/test-background.py \
