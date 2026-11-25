@@ -12,7 +12,7 @@ use std::{
     process::{Child, Command},
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::Duration,
 };
@@ -24,6 +24,16 @@ use tokio::{
 
 const ID: &str = "0b6a0b4e-1111-4222-8333-444455556666";
 const SID: &str = "0123456789abcdef";
+struct Capture(Arc<Mutex<Vec<u8>>>);
+impl std::io::Write for Capture {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
 struct Server(Child);
 impl Drop for Server {
     fn drop(&mut self) {
@@ -52,7 +62,13 @@ fn client(port: u16, public: &str, short: &str, uuid: &str, vision: bool) -> Vle
     .unwrap()
 }
 
-async fn server(camouflage: u16, tcp: u16, udp: u16, vision: bool) -> (Server, u16, String) {
+async fn server(
+    camouflage: u16,
+    tcp: u16,
+    udp: u16,
+    inner: u16,
+    vision: bool,
+) -> (Server, u16, String) {
     let binary = PathBuf::from(
         std::env::var_os("PRISM_REALITY_SERVER_BIN").expect("Set verified Xray binary"),
     );
@@ -73,10 +89,10 @@ async fn server(camouflage: u16, tcp: u16, udp: u16, vision: bool) -> (Server, u
                 "target":format!("127.0.0.1:{camouflage}"),"serverNames":["reality.fixture.test"],
                 "privateKey":URL_SAFE_NO_PAD.encode(secret.to_bytes()),"shortIds":[SID]}}}],
         "outbounds":[{"tag":"echo","protocol":"freedom","settings":{"finalRules":[{
-            "action":"allow","network":"tcp,udp","ip":["127.0.0.1"],"port":format!("{tcp},{udp}")
+            "action":"allow","network":"tcp,udp","ip":["127.0.0.1"],"port":format!("{tcp},{udp},{inner}")
         }]}},{"tag":"blocked","protocol":"blackhole"}],
         "routing":{"domainStrategy":"AsIs","rules":[
-            {"type":"field","ip":["127.0.0.1"],"port":format!("{tcp},{udp}"),"outboundTag":"echo"},
+            {"type":"field","ip":["127.0.0.1"],"port":format!("{tcp},{udp},{inner}"),"outboundTag":"echo"},
             {"type":"field","network":"tcp,udp","outboundTag":"blocked"}]}
     });
     let dir = std::env::current_dir()
@@ -120,6 +136,15 @@ async fn server(camouflage: u16, tcp: u16, udp: u16, vision: bool) -> (Server, u
 #[tokio::test]
 #[ignore = "Requires PRISM_REALITY_SERVER_BIN pointing to a checksum-verified Xray"]
 async fn independent_reality_and_vision_payloads_and_authentication() {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let output = events.clone();
+    tracing_subscriber::fmt()
+        .without_time()
+        .with_ansi(false)
+        .with_env_filter("prism_core::outbound::vision=debug")
+        .with_writer(move || Capture(output.clone()))
+        .try_init()
+        .unwrap();
     let camouflage = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let camouflage_port = camouflage.local_addr().unwrap().port();
     let cert = rcgen::generate_simple_self_signed(vec!["reality.fixture.test".into()]).unwrap();
@@ -134,6 +159,7 @@ async fn independent_reality_and_vision_payloads_and_authentication() {
     .unwrap();
     tls.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(tls));
+    let inner_acceptor = acceptor.clone();
     tokio::spawn(async move {
         while let Ok((s, _)) = camouflage.accept().await {
             let a = acceptor.clone();
@@ -142,6 +168,37 @@ async fn independent_reality_and_vision_payloads_and_authentication() {
             });
         }
     });
+    let inner = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let inner_port = inner.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((s, _)) = inner.accept().await {
+            let acceptor = inner_acceptor.clone();
+            tokio::spawn(async move {
+                let Ok(mut s) = acceptor.accept(s).await else {
+                    return;
+                };
+                let mut bytes = [0; 16384];
+                while let Ok(n) = s.read(&mut bytes).await {
+                    if n == 0 || s.write_all(&bytes[..n]).await.is_err() || s.flush().await.is_err()
+                    {
+                        break;
+                    }
+                }
+            });
+        }
+    });
+    // This trust anchor belongs only to the inner application TLS client.
+    // The VLESS/REALITY outbound still authenticates using its public key.
+    let mut roots = rustls::RootCertStore::empty();
+    roots.add(cert.cert.der().clone()).unwrap();
+    let inner_config = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_protocol_versions(&[&rustls::version::TLS13])
+    .unwrap()
+    .with_root_certificates(roots)
+    .with_no_client_auth();
+    let inner_connector = tokio_rustls::TlsConnector::from(Arc::new(inner_config));
     let tcp = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let tcp_port = tcp.local_addr().unwrap().port();
     let delivered = Arc::new(AtomicUsize::new(0));
@@ -172,7 +229,8 @@ async fn independent_reality_and_vision_payloads_and_authentication() {
         }
     });
     for vision in [false, true] {
-        let (_server, port, public) = server(camouflage_port, tcp_port, udp_port, vision).await;
+        let (_server, port, public) =
+            server(camouflage_port, tcp_port, udp_port, inner_port, vision).await;
         eprintln!("REALITY vision={vision}");
         let node = client(port, &public, SID, ID, vision);
         timeout(Duration::from_secs(8), async {
@@ -188,6 +246,56 @@ async fn independent_reality_and_vision_payloads_and_authentication() {
         })
         .await
         .expect("REALITY TCP timeout");
+        let events_before = events.lock().unwrap().len();
+        timeout(Duration::from_secs(8), async {
+            let stream = node
+                .connect(&Address::new("127.0.0.1", inner_port))
+                .await
+                .unwrap();
+            let tls = inner_connector
+                .connect(
+                    rustls::pki_types::ServerName::try_from("reality.fixture.test").unwrap(),
+                    stream,
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                tls.get_ref().1.protocol_version(),
+                Some(rustls::ProtocolVersion::TLSv1_3)
+            );
+            let payload: Vec<u8> = (0..512_000).map(|i| (i % 251) as u8).collect();
+            let (mut reader, mut writer) = tokio::io::split(tls);
+            let upload = async {
+                writer.write_all(&payload).await.unwrap();
+                writer.flush().await.unwrap();
+            };
+            let download = async {
+                let mut reply = vec![0; payload.len()];
+                reader.read_exact(&mut reply).await.unwrap();
+                assert_eq!(reply, payload);
+            };
+            tokio::join!(upload, download);
+            if vision {
+                let captured = events.lock().unwrap();
+                let messages = String::from_utf8_lossy(&captured[events_before..]);
+                assert!(
+                    messages.contains("vision: switched to direct copy"),
+                    "upload direct copy not observed: {messages}"
+                );
+                assert!(
+                    messages.contains("vision: server switched to direct copy"),
+                    "download direct copy not observed: {messages}"
+                );
+            }
+            writer.write_all(b"after-direct-copy").await.unwrap();
+            writer.flush().await.unwrap();
+            let mut tail = [0; 17];
+            reader.read_exact(&mut tail).await.unwrap();
+            assert_eq!(&tail, b"after-direct-copy");
+        })
+        .await
+        .expect("inner TLS13 payload timeout");
+        eprintln!("REALITY vision={vision}: verified inner TLS13, 512000 bytes each direction");
         let mut pipe = timeout(
             Duration::from_secs(5),
             node.connect_udp(&Address::new("127.0.0.1", udp_port)),

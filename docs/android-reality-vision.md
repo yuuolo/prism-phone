@@ -12,4 +12,12 @@
 
 复现需显式设置 `PRISM_REALITY_SERVER_BIN` 指向已独立核验的 Xray 绝对路径，再运行 `cargo test -p prism-core --test reality_interop --locked -- --ignored --nocapture`。普通测试不自动执行或下载服务端。
 
-本轮未改生产协议代码。尚缺内层真实 TLS 流量及 Vision 直接拷贝路径的专项证据、更多参数与错误 SNI、Linux 独立互通、手机导入/会话参数、受保护 socket、实际 TUN/DNS/链式/优选/恢复、双系统后台、原签名升级与真实设备。当前随机载荷正向不能代替内层 TLS 或优化路径验证，手机入口继续保持关闭。iOS 与 HarmonyOS NEXT 暂停；没有发布新版本。
+## 内层 TLS 与直接拷贝回归
+
+增加独立的内层 TLS 1.3 服务和测试客户端，客户端仅信任该内层服务的临时测试根并校验名称，不改变 Reality 出站的认证。Reality 两种模式均通过 TLS 1.3 握手及双向各 512,000 字节完整校验（`artifacts/reality-inner-tls-interop.log`）。初版夹具遗漏 TLS flush 而超时，失败保留为 `reality-inner-tls-initial-timeout.log`；补齐客户端与服务端 flush 后通过，未改生产协议代码。
+
+进一步加入只捕获 Vision 状态事件的日志和切换后的追加载荷，要求双向实际切到直接拷贝。该增强测试目前**失败**：下行切换可见，上行事件缺失（`artifacts/reality-direct-copy-before.log`）。因此不能把内层 TLS 数据通过当作双向优化已完成。[Xray 实现](https://github.com/XTLS/Xray-core/blob/main/proxy/proxy.go) 在重塑缓冲前判断完整记录，再在末块发送切换指令；本内核按每个 8 KiB 填充块检查完整性，较大或跨 write 的记录会漏掉上行切换。
+
+仅将检查移到切块前的尝试仍失败（`reality-direct-copy-after.log`），该尝试未保留在生产实现。后续须按实际已消费字节跟踪跨 write 的记录边界，限制状态/内存，不能假定调用者在一次部分写入成功后一定继续提供同一未消费缓冲。增强断言保留为显式 opt-in 的未通过回归，不放宽为只验证数据或单向事件；当前普通 CI 不执行该忽略测试。
+
+生产协议代码保持原状。仍需解决上述缺口、更多参数与错误 SNI、Linux 独立互通、手机导入/会话参数、受保护 socket、实际 TUN/DNS/链式/优选/恢复、双系统后台、原签名升级与真实设备。手机入口继续保持关闭。iOS 与 HarmonyOS NEXT 暂停；没有发布新版本。
