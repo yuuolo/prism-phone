@@ -41,26 +41,35 @@ class VmessTest {
         }
     }
     private fun tls(proxy:Int?=null) {
-        val before=status().optLong("networkRebuilds",-1)
+        val before=status()
+        var probeStage="tcp-connect"
         try {
         Socket().use {transport->
             transport.soTimeout=8000;transport.connect(InetSocketAddress(if(proxy==null)"1.1.1.1" else "127.0.0.1",proxy ?: 443),4000)
             if(proxy!=null) {
+                probeStage="proxy-connect"
                 transport.getOutputStream().write("CONNECT 1.1.1.1:443 HTTP/1.1\r\nHost: 1.1.1.1:443\r\n\r\n".toByteArray())
                 val head=ByteArrayOutputStream()
                 while(!head.toString("US-ASCII").endsWith("\r\n\r\n") && head.size()<8192) {val b=transport.getInputStream().read();check(b>=0);head.write(b)}
                 assertTrue(head.toString("US-ASCII").startsWith("HTTP/1.1 200"))
             }
             (LiveTlsFixture.factory().createSocket(transport,"1.1.1.1",443,true) as SSLSocket).use {socket->
+                probeStage="tls-handshake"
                 socket.soTimeout=8000;socket.sslParameters=socket.sslParameters.apply{endpointIdentificationAlgorithm="HTTPS"};socket.startHandshake()
+                probeStage="http-write"
                 socket.getOutputStream().write("GET / HTTP/1.1\r\nHost: 1.1.1.1\r\nConnection: close\r\n\r\n".toByteArray())
+                probeStage="http-read"
                 val reply=ByteArray(12);DataInputStream(socket.getInputStream()).readFully(reply)
                 assertTrue(String(reply,Charsets.US_ASCII).startsWith("HTTP/"))
             }
         }
         } catch(error:Exception) {
             val after=runCatching{status()}.getOrDefault(JSONObject())
-            throw IOException("VMess TLS probe failed; stage=${PrismVpnService.stage}; networkRebuilds=$before->${after.optLong("networkRebuilds",-1)}; recovery=${after.optJSONObject("networkRecovery")}",error)
+            val counters=JSONObject()
+            for(key in listOf("networkRebuilds","tunReceived","tunSent","upload","download","connections")) {
+                counters.put(key,JSONArray().put(before.optLong(key,-1)).put(after.optLong(key,-1)))
+            }
+            throw IOException("VMess TLS probe failed; probeStage=$probeStage; stage=${PrismVpnService.stage}; beforeAfter=$counters; recovery=${after.optJSONObject("networkRecovery")}",error)
         }
     }
     private fun traffic(nodeId:String) {
