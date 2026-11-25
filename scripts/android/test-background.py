@@ -99,13 +99,18 @@ def main():
         raise RuntimeError("No current UI hierarchy: " + last_dump[:350])
 
     def click_button(text):
-        for node in ui().iter("node"):
-            if node.get("text") == text and node.get("package") == "dev.prism.android" and node.get("class") == "android.widget.Button" and node.get("enabled") == "true":
-                points = list(map(int, re.findall(r"[0-9]+", node.get("bounds", ""))))
-                if len(points) == 4:
-                    shell("input", "tap", str((points[0] + points[2]) // 2), str((points[1] + points[3]) // 2))
-                    return
-        raise RuntimeError("Expected current app button was not present")
+        def locate():
+            for node in ui().iter("node"):
+                if node.get("text") == text and node.get("package") == "dev.prism.android" and node.get("class") == "android.widget.Button" and node.get("enabled") == "true":
+                    points = list(map(int, re.findall(r"[0-9]+", node.get("bounds", ""))))
+                    if len(points) == 4:
+                        return points
+            return None
+        # A resumed Activity may still be rendering its first window. Use the
+        # existing UI readiness bound, not a fixed cold-start sleep or retries
+        # of the actual VPN connection.
+        points = wait_for("current app button " + text, locate)
+        shell("input", "tap", str((points[0] + points[2]) // 2), str((points[1] + points[3]) // 2))
 
     avd = adb("emu", "avd", "name").splitlines()[0]
     if avd != args.expected_avd:
@@ -143,7 +148,6 @@ def main():
         shell("input", "keyevent", "224")
         shell("wm", "dismiss-keyguard", check=False)
         shell("am", "start", "-n", "dev.prism.android/.MainActivity", "-f", "0x10008000")
-        time.sleep(1)
         phase = "ui-connect"
         click_button("连接")
         phase = "ui-connected"
@@ -208,6 +212,10 @@ def main():
         # This script already restricts all operations to disposable owned AVDs.
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            output.with_name(output.stem + "-failure-ui.xml").write_text(ET.tostring(ui(), encoding="unicode"), encoding="utf-8")
+        except Exception as capture_error:
+            report.setdefault("diagnosticErrors", []).append(type(capture_error).__name__)
         for label, command in [("logcat", ["logcat", "-d", "-t", "2000"]),
                                ("connectivity", ["shell", "dumpsys", "connectivity"]),
                                ("activity", ["shell", "dumpsys", "activity", "top"])]:
