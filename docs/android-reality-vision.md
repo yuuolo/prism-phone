@@ -16,8 +16,12 @@
 
 增加独立的内层 TLS 1.3 服务和测试客户端，客户端仅信任该内层服务的临时测试根并校验名称，不改变 Reality 出站的认证。Reality 两种模式均通过 TLS 1.3 握手及双向各 512,000 字节完整校验（`artifacts/reality-inner-tls-interop.log`）。初版夹具遗漏 TLS flush 而超时，失败保留为 `reality-inner-tls-initial-timeout.log`；补齐客户端与服务端 flush 后通过，未改生产协议代码。
 
-进一步加入只捕获 Vision 状态事件的日志和切换后的追加载荷，要求双向实际切到直接拷贝。该增强测试目前**失败**：下行切换可见，上行事件缺失（`artifacts/reality-direct-copy-before.log`）。因此不能把内层 TLS 数据通过当作双向优化已完成。[Xray 实现](https://github.com/XTLS/Xray-core/blob/main/proxy/proxy.go) 在重塑缓冲前判断完整记录，再在末块发送切换指令；本内核按每个 8 KiB 填充块检查完整性，较大或跨 write 的记录会漏掉上行切换。
+进一步加入只捕获 Vision 状态事件的日志和切换后的追加载荷，要求双向实际切到直接拷贝。增强测试最初失败：下行切换可见，上行事件缺失（`artifacts/reality-direct-copy-before.log`）。因此不能把内层 TLS 数据通过当作双向优化已完成。[Xray 实现](https://github.com/XTLS/Xray-core/blob/main/proxy/proxy.go) 在重塑缓冲前判断完整记录，再在末块发送切换指令；本内核按每个 8 KiB 填充块检查完整性，较大或跨 write 的记录会漏掉上行切换。
 
-仅将检查移到切块前的尝试仍失败（`reality-direct-copy-after.log`），该尝试未保留在生产实现。后续须按实际已消费字节跟踪跨 write 的记录边界，限制状态/内存，不能假定调用者在一次部分写入成功后一定继续提供同一未消费缓冲。增强断言保留为显式 opt-in 的未通过回归，不放宽为只验证数据或单向事件；当前普通 CI 不执行该忽略测试。
+仅将检查移到切块前的尝试仍失败（`reality-direct-copy-after.log`），该尝试未保留。后续临时诊断确认 TLS 1.3/允许的套件已经识别，但实际写入为 8155、37 等片段（`reality-direct-copy-diagnostic.log`）；诊断输出未留在生产代码。
 
-生产协议代码保持原状。仍需解决上述缺口、更多参数与错误 SNI、Linux 独立互通、手机导入/会话参数、受保护 socket、实际 TUN/DNS/链式/优选/恢复、双系统后台、原签名升级与真实设备。手机入口继续保持关闭。iOS 与 HarmonyOS NEXT 暂停；没有发布新版本。
+修正使用固定 5 字节头与剩余长度计数跟踪实际入队的 TLS 字节，不缓存记录正文，不依赖调用者保留未消费后缀；仅在已消费片段恰好结束应用记录时发出 END/DIRECT，继续沿用 TLS 版本/套件判断及写出后再切换。畸形头禁用该优化，转发仍保留外层 TLS。
+
+同一增强测试现已通过，两个方向均观测到直接拷贝，切换后的追加 TLS 载荷也逐字节通过；512,000 字节、原 TCP/UDP 及错误公钥/短 ID/UUID 保留，并新增错误 SNI 的及时拒绝（`artifacts/reality-record-boundary-final.log`）。93 项 Windows 内核单元、4 项 gRPC 帧及 5 项 VMess 参数回归通过；新增三项覆盖 1/37/8155/8192 分片、跨 write 头、正文伪头及畸形输入（`vision-record-boundary-core.log`）。没有放宽双向事件、认证或后续数据断言。
+
+CI 独立互通脚本已增加使用固定 Xray 的 Reality/Vision 测试，尚待 Linux 执行；运行中的 gRPC CI d5388b3 不包含本次修正。更多参数、手机导入/会话、受保护 socket、实际 TUN/DNS/链式/优选/恢复、双系统后台、原签名升级与真实设备仍缺证据，手机入口继续关闭。iOS 与 HarmonyOS NEXT 暂停；没有发布新版本。

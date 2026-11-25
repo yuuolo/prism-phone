@@ -42,7 +42,7 @@ impl Drop for Server {
     }
 }
 
-fn client(port: u16, public: &str, short: &str, uuid: &str, vision: bool) -> Vless {
+fn client(port: u16, public: &str, short: &str, uuid: &str, vision: bool, sni: &str) -> Vless {
     Vless::new(
         &ProxyConfig {
             name: "reality-interop".into(),
@@ -51,7 +51,7 @@ fn client(port: u16, public: &str, short: &str, uuid: &str, vision: bool) -> Vle
             port,
             uuid: Some(uuid.into()),
             tls: true,
-            sni: Some("reality.fixture.test".into()),
+            sni: Some(sni.into()),
             reality_public_key: Some(public.into()),
             reality_short_id: Some(short.into()),
             flow: vision.then(|| "xtls-rprx-vision".into()),
@@ -232,7 +232,7 @@ async fn independent_reality_and_vision_payloads_and_authentication() {
         let (_server, port, public) =
             server(camouflage_port, tcp_port, udp_port, inner_port, vision).await;
         eprintln!("REALITY vision={vision}");
-        let node = client(port, &public, SID, ID, vision);
+        let node = client(port, &public, SID, ID, vision, "reality.fixture.test");
         timeout(Duration::from_secs(8), async {
             let mut s = node
                 .connect(&Address::new("127.0.0.1", tcp_port))
@@ -292,6 +292,11 @@ async fn independent_reality_and_vision_payloads_and_authentication() {
             let mut tail = [0; 17];
             reader.read_exact(&mut tail).await.unwrap();
             assert_eq!(&tail, b"after-direct-copy");
+            if vision {
+                eprintln!(
+                    "Vision bidirectional direct copy observed; post-switch TLS payload verified"
+                );
+            }
         })
         .await
         .expect("inner TLS13 payload timeout");
@@ -316,12 +321,18 @@ async fn independent_reality_and_vision_payloads_and_authentication() {
         drop(pipe);
         let before = delivered.load(Ordering::SeqCst);
         let wrong_key = URL_SAFE_NO_PAD.encode([42u8; 32]);
-        for (pk, sid, id) in [
-            (&wrong_key[..], SID, ID),
-            (&public[..], "fedcba9876543210", ID),
-            (&public[..], SID, "1b6a0b4e-1111-4222-8333-444455556666"),
+        for (pk, sid, id, sni) in [
+            (&wrong_key[..], SID, ID, "reality.fixture.test"),
+            (&public[..], "fedcba9876543210", ID, "reality.fixture.test"),
+            (
+                &public[..],
+                SID,
+                "1b6a0b4e-1111-4222-8333-444455556666",
+                "reality.fixture.test",
+            ),
+            (&public[..], SID, ID, "wrong.fixture.test"),
         ] {
-            let bad = client(port, pk, sid, id, vision);
+            let bad = client(port, pk, sid, id, vision, sni);
             let result = timeout(Duration::from_secs(5), async {
                 let mut s = bad.connect(&Address::new("127.0.0.1", tcp_port)).await?;
                 s.write_all(b"must not reach echo").await?;

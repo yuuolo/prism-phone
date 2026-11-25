@@ -79,6 +79,7 @@ impl Traffic {
 }
 
 /// A buffer made only of whole TLS application-data records.
+#[cfg(test)]
 fn complete_app_records(mut b: &[u8]) -> bool {
     if b.is_empty() {
         return false;
@@ -94,6 +95,50 @@ fn complete_app_records(mut b: &[u8]) -> bool {
         b = &b[5 + len..];
     }
     true
+}
+
+/// Outgoing TLS records can straddle both AsyncWrite calls and padding blocks.
+/// Track only queued bytes, never an unconsumed suffix owned by the caller.
+/// No record body is buffered; malformed framing disables this optimization.
+#[derive(Default)]
+struct RecordBoundary {
+    header: [u8; 5],
+    filled: usize,
+    remaining: usize,
+    application: bool,
+    invalid: bool,
+}
+
+impl RecordBoundary {
+    fn feed(&mut self, mut bytes: &[u8]) -> bool {
+        if self.invalid { return false; }
+        let mut ended_application = false;
+        while !bytes.is_empty() {
+            if self.remaining > 0 {
+                let n = self.remaining.min(bytes.len());
+                self.remaining -= n;
+                bytes = &bytes[n..];
+                ended_application = self.remaining == 0 && self.application;
+                continue;
+            }
+            let n = (5 - self.filled).min(bytes.len());
+            self.header[self.filled..self.filled+n].copy_from_slice(&bytes[..n]);
+            self.filled += n;
+            bytes = &bytes[n..];
+            if self.filled < 5 { break; }
+            if !matches!(self.header[0], 0x14..=0x17) || self.header[1] != 3
+                || !matches!(self.header[2], 1..=3)
+                || (self.header[0] == 0x17 && self.header[2] != 3) {
+                self.invalid = true;
+                return false;
+            }
+            self.application = self.header[0] == 0x17;
+            self.remaining = u16::from_be_bytes([self.header[3], self.header[4]]) as usize;
+            self.filled = 0;
+            ended_application = self.remaining == 0 && self.application;
+        }
+        self.filled == 0 && self.remaining == 0 && ended_application
+    }
 }
 
 /// Xray's XtlsPadding.
@@ -208,6 +253,7 @@ pub struct VisionStream<S> {
     pending_pos: usize,
     pending_len: usize,
     switch_write_direct: bool,
+    outgoing_records: RecordBoundary,
     // read side
     header_left: Option<usize>,
     header_buf: Vec<u8>,
@@ -231,6 +277,7 @@ impl<S> VisionStream<S> {
             pending_pos: 0,
             pending_len: 0,
             switch_write_direct: false,
+            outgoing_records: RecordBoundary::default(),
             header_left: None,
             header_buf: Vec::new(),
             unpad: Unpad::new(uuid),
@@ -347,7 +394,8 @@ impl<S: AsyncRead + AsyncWrite + Unpin> AsyncWrite for VisionStream<S> {
             this.traffic.filter(chunk);
         }
         let mut long = this.traffic.is_tls;
-        let cmd = if this.traffic.is_tls && chunk.len() >= 6 && complete_app_records(chunk) {
+        let complete = this.traffic.is_tls && this.outgoing_records.feed(chunk);
+        let cmd = if complete {
             this.padding = false;
             long = true;
             if this.traffic.enable_xtls {
@@ -383,6 +431,42 @@ impl<S: AsyncRead + AsyncWrite + Unpin> AsyncWrite for VisionStream<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn outgoing_record_boundaries_survive_write_and_padding_fragments() {
+        let mut wire = vec![0x17, 3, 3, 0x23, 0x28]; // 9000-byte record
+        wire.extend_from_slice(&vec![0x17; 9000]);
+        for size in [1, 37, 8155, 8192] {
+            let mut tracker = RecordBoundary::default();
+            let pieces: Vec<_> = wire.chunks(size).collect();
+            for (i, piece) in pieces.iter().enumerate() {
+                assert_eq!(tracker.feed(piece), i == pieces.len()-1, "chunk={size} part={i}");
+            }
+            assert!(!tracker.feed(&[]));
+        }
+    }
+
+    #[test]
+    fn outgoing_record_tracker_does_not_scan_headers_inside_a_body() {
+        let mut tracker = RecordBoundary::default();
+        assert!(!tracker.feed(&[0x16,3,1,0,1,1,0x14,3,3,0,1,1]));
+        assert!(!tracker.feed(&[0x17,3,3,0,7]));
+        // A complete-looking TLS record is still just bytes in the outer body.
+        assert!(!tracker.feed(&[0x17,3,3,0,1,42]));
+        assert!(tracker.feed(&[43]));
+    }
+
+    #[test]
+    fn invalid_outgoing_framing_disables_direct_copy_detection() {
+        for bad in [[0x13,3,3,0,1], [0x17,3,1,0,1], [0x17,2,3,0,1]] {
+            let mut tracker = RecordBoundary::default();
+            assert!(!tracker.feed(&bad));
+            assert!(!tracker.feed(&[0x17,3,3,0,1,42]));
+        }
+        let mut tracker = RecordBoundary::default();
+        assert!(!tracker.feed(&[0x17,3,3,0,1,42,0x17]));
+        assert!(tracker.feed(&[3,3,0,1,43]));
+    }
 
     #[test]
     fn pad_unpad_round_trip() {

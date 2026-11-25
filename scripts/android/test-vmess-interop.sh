@@ -18,3 +18,8 @@ if [ "$transport" = grpc ]; then
     cargo test -p prism-core --test vmess_interop --locked -- --ignored --nocapture
 fi
 done
+
+# The next Android protocol remains closed until mobile acceptance. Exercise
+# its shared implementation against the same checksum-verified Xray first.
+PRISM_REALITY_SERVER_BIN="$base/xray/xray" \
+  cargo test -p prism-core --test reality_interop --locked -- --ignored --nocapture
