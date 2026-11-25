@@ -1,6 +1,6 @@
 # VMess WebSocket 开发候选（未发布）
 
-本轮完整 CI 固定为提交 8e6b957。等待期间的下一项 [gRPC 独立互通准备](android-vmess-grpc.md) 不属于该 WS 产物或升级回执，手机 gRPC 仍未开放。
+首次完整 CI 固定为提交 8e6b957，运行 45614298228 已失败，不得用于签名升级或发布。下一项 [gRPC 独立互通准备](android-vmess-grpc.md) 仍仅为核心互通测试，手机 gRPC 尚未开放。
 
 接续基础 VMess AEAD TCP 候选。本轮在 Android 导入策略中增加 VMess 的 WebSocket，保留 UUID/cipher/alterId 构造校验及严格证书要求；其它协议的 WS、gRPC、Reality/Vision 等仍须分别接入。没有改变公开 Beta.9 或升级通道。
 
@@ -26,6 +26,8 @@ API 37 首次后台验收在 ui-connect 阶段找不到按钮，未进入 IDLE�
 恢复后完整 WS 后台验收通过（`vmess-ws-background-api37-recovered.json`，mode=vmess-ws-chain、ok=true）：强制 IDLE 180 秒，PID 11409 与 VPN 110/tun0 保持不变，三阶段均通过冷 DNS/fake-IP、严格 TLS/HTTP 200，用户断开不复活及断开对照拒绝。结束时 System UI 仍为 PID 10596。观察期间未再次干预系统界面；这不是无干预首次冷启动成功的证据。验收后关闭一次性模拟器及核实过的夹具，原签名样本未改动。
 
 ## 尚待完成
+
+2026-11-26 核对上述 CI：两端均完成 26 项应用测试，随后在 TCP→WS 夹具切换阶段退出；API 26 保存的 WS 夹具日志明确为前置 SOCKS 端口 19097 的 `EADDRINUSE`，WS 专项未运行。修正仅对非 Windows 的回环 TCP 监听启用 `SO_REUSEADDR`，允许旧连接关闭后立即顺序重绑；不启用 `SO_REUSEPORT`，也不允许替换仍活动的监听。新增活动监听不可替换与真实连接主动关闭后立即重绑两项回归，后者须在 Linux CI 执行；Windows 本地跳过该项。较早下载的 code 13 APK 因 CI 失败保持 unsigned、不可升级，须使用修正后完整 CI 的新产物重新验收。
 
 code 13 的新完整远端 CI、最终候选原签名升级仍须验收。后台工具已增加独立 WS 种子标记与 mode，CI 会先完成 TCP，再切换独立 WS 服务端，重新安装标准 runner 后执行 WS 前台与后台测试。不能用较早 TCP 的 CI、原签名升级或后台报告代替 WS 结果。
 

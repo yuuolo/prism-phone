@@ -22,7 +22,7 @@ python3 -u scripts/android/vmess-fixture.py --binary "$vmess_binary" --kind "$vm
 vmess_pid=$!
 for attempt in {1..40}; do
   grep -q 'VMess mobile fixture ready' emulator-results/vmess-fixture.txt && break
-  kill -0 "$vmess_pid"
+  kill -0 "$vmess_pid" 2>/dev/null || { cat emulator-results/vmess-fixture.txt; exit 1; }
   sleep .25
 done
 grep -q 'VMess mobile fixture ready' emulator-results/vmess-fixture.txt
@@ -65,7 +65,7 @@ python3 -u scripts/android/vmess-fixture.py --binary "$vmess_binary" --kind "$vm
 vmess_pid=$!
 for attempt in {1..40}; do
   grep -q 'VMess mobile fixture ready' emulator-results/vmess-ws-fixture.txt && break
-  kill -0 "$vmess_pid"
+  kill -0 "$vmess_pid" 2>/dev/null || { cat emulator-results/vmess-ws-fixture.txt; exit 1; }
   sleep .25
 done
 grep -q 'VMess mobile fixture ready' emulator-results/vmess-ws-fixture.txt

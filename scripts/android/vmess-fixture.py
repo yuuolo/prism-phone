@@ -60,6 +60,23 @@ def first_hop(client):
             return
 
 
+def first_listener(port=FIRST_PORT):
+    first = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        # Sequential TCP -> WS runs reuse this loopback port. Linux keeps
+        # accepted connections in TIME_WAIT after the old listener exits.
+        # Do not enable Windows' different, overlapping-bind semantics.
+        if os.name != "nt":
+            first.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        first.bind(("127.0.0.1", port))
+        first.listen(8)
+        first.settimeout(.5)
+        return first
+    except BaseException:
+        first.close()
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", required=True)
@@ -95,12 +112,9 @@ def main():
     }
     config_path = output / "server.json"
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as echo, socket.socket() as first:
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as echo, first_listener() as first:
         echo.bind(("127.0.0.1", ECHO_PORT))
         echo.settimeout(.5)
-        first.bind(("127.0.0.1", FIRST_PORT))
-        first.listen(8)
-        first.settimeout(.5)
         def udp_echo():
             while not stop.is_set():
                 try:
