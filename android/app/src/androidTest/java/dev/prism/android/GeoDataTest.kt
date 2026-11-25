@@ -97,16 +97,21 @@ class GeoDataTest {
                         .scrollIntoView(UiSelector().textContains("网络配置重建已完成"))
                     assertTrue(device.wait(Until.hasObject(By.textContains("网络配置重建已完成")),5000))
                     assertFalse(device.hasObject(By.textContains("网络重建被地区数据校验阻止")))
-                    File(dir,"geosite.dat").writeText("corrupt")
                     disconnect()
-                    context.startForegroundService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT));await("连接失败")
-                    assertFalse(JSONObject(CoreBridge.status()).getBoolean("running"))
-                    File(dir,"geosite.dat").writeBytes(site);connect()
-                    val fresh=JSONObject(CoreBridge.status())
-                    assertNotEquals(session,fresh.getString("sessionId"))
-                    assertEquals(0L,fresh.getJSONObject("networkRecovery").getLong("failures"))
-                    assertTrue(fresh.getJSONObject("networkRecovery").isNull("reason"))
-                    disconnect();CoreBridge.networkChanged();Thread.sleep(3200)
+                    // Retry immediately after a failed foreground start. Do
+                    // not add a delay: queued starts must survive old cleanup.
+                    repeat(3) {
+                        File(dir,"geosite.dat").writeText("corrupt")
+                        context.startForegroundService(Intent(context,PrismVpnService::class.java).setAction(PrismVpnService.CONNECT));await("连接失败")
+                        assertFalse(JSONObject(CoreBridge.status()).getBoolean("running"))
+                        File(dir,"geosite.dat").writeBytes(site);connect()
+                        val fresh=JSONObject(CoreBridge.status())
+                        assertNotEquals(session,fresh.getString("sessionId"))
+                        assertEquals(0L,fresh.getJSONObject("networkRecovery").getLong("failures"))
+                        assertTrue(fresh.getJSONObject("networkRecovery").isNull("reason"))
+                        disconnect()
+                    }
+                    CoreBridge.networkChanged();Thread.sleep(3200)
                     val stopped=JSONObject(CoreBridge.status())
                     assertFalse(stopped.getBoolean("running"));assertFalse(stopped.has("networkRecovery"))
                 } finally {if(PrismVpnService.stage in listOf("已连接","正在连接"))disconnect();File(dir,"geosite.dat").writeBytes(site)}

@@ -69,3 +69,11 @@ code 12 新诊断重现 TLS 关闭时 `networkRebuilds=0→1`，恢复状态为 
 `NetworkChangeState.available` 现仅在此前没有已知网络时触发重建；已有链路时的新网络先记录，链路属性、实际 VPN 底层传输变化及丢失通知继续独立处理。JVM 回归先在旧行为失败（`network-available-before.log`），修正后通过，并验证全断网后首条网络仍触发恢复。没有延长 VMess 测试等待或增加 TLS 重试。
 
 相同冷启动条件下 VMess 专项通过（`vmess-network-available-cold-after-api26.log`，27.797 秒，完整分阶段 evidence 保留），真实 Wi-Fi/移动网络、完全断网与恢复专项通过（`network-available-real-switch-api26.log`，40.440 秒）。不能将这一修正解释为所有连接不稳定或所有 TLS 关闭均已解决；code 12 修正后的双系统完整 CI 与原签名升级仍须另验收，真机条件仍缺失，尚未发布。
+
+## code 12 前台服务重试竞态
+
+CI 45600493463 的 Android 8 在 GeoDataTest 中发生 `Context.startForegroundService() did not then call Service.startForeground()`，进程崩溃，未运行到 VMess 专项。已核对失败归档摘要并保留 `artifacts/ci-45600493463-android8/logcat.txt`；系统日志为 `Bringing down service while still waiting for start foreground`。该 CI 产物虽已下载校验，但未签名、未安装，不能用于升级验收；原签名样本重新验证通过，仍为 Beta.9 code 11 / UID 10230。
+
+服务失败分支原先先发布可重试状态、再无条件 stopSelf，可能将排队的新前台启动一并停止。现先按已送达的 latestStartId 执行 stopSelfResult，再发布失败；断开完成同样先停止再发布完成状态。重复 CONNECT 也先履行 startForeground 义务再返回，不额外启动内核或改变证书策略。
+
+GeoDataTest 增强为连续三次损坏数据启动失败后立即恢复连接，不增加失败后等待或重试宽限。本地 Android 8 通过（`artifacts/foreground-retry-api26.log`，18.422 秒），包含每次新会话及恢复失败计数清零检查。完整 code 12 CI 和原签名覆盖升级仍待修复后的提交另行通过；没有发布。

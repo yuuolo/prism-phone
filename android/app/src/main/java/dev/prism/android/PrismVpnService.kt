@@ -87,12 +87,14 @@ class PrismVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         latestStartId=startId
         if (intent?.action != CONNECT) { disconnect(); return START_NOT_STICKY }
-        if (stage == "已连接" || stage == "正在连接") return START_NOT_STICKY
-        val ticket = generation.incrementAndGet()
         try {
             if (Build.VERSION.SDK_INT >= 34) startForeground(1, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             else startForeground(1, notification())
-        } catch (_: Exception) { publish("连接失败", "系统未允许 VPN 前台服务"); stopSelf(); return START_NOT_STICKY }
+        } catch (_: Exception) { stopSelfResult(startId); publish("连接失败", "系统未允许 VPN 前台服务"); return START_NOT_STICKY }
+        // Every foreground start must satisfy the OS obligation, including a
+        // duplicate CONNECT delivered while this service is already starting.
+        if (stage == "已连接" || stage == "正在连接") return START_NOT_STICKY
+        val ticket = generation.incrementAndGet()
         publish("正在连接")
         serial.execute {
             try {
@@ -128,8 +130,11 @@ class PrismVpnService : VpnService() {
             } catch (error: Throwable) {
                 cleanup()
                 main.post { if (ticket == generation.get() && !destroyed) {
+                    // Retire only delivered starts before exposing the retry
+                    // state. An unqualified stopSelf can kill a newer queued
+                    // startForegroundService request before it is delivered.
+                    stopForeground(STOP_FOREGROUND_REMOVE); stopSelfResult(latestStartId)
                     publish("连接失败",when(error){is AppRoutingUnavailable->error.message ?: "应用分流配置不可用";is LocalNetworkPermissionRequired->"局域网节点需要局域网访问权限，请在设置授权";else->"请检查 VPN 授权、节点参数和系统限制"})
-                    stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
                 } }
             }
         }
@@ -268,7 +273,7 @@ class PrismVpnService : VpnService() {
         publish("正在断开")
         serial.execute {
             cleanup()
-            main.post { if (ticket == generation.get() && !destroyed) { publish("已断开", reason); stopForeground(STOP_FOREGROUND_REMOVE); stopSelfResult(stopId) } }
+            main.post { if (ticket == generation.get() && !destroyed) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelfResult(stopId); publish("已断开", reason) } }
         }
     }
     override fun onRevoke() { main.post { disconnect("VPN 授权已撤销") } }
