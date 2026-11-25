@@ -5,6 +5,29 @@ use serde_json::{json, Value};
 const ID: &str = "0b6a0b4e-1111-4222-8333-444455556666";
 
 #[test]
+fn grpc_service_name_is_preserved_across_configuration_formats() {
+    let service = "Prism.Vmess_Interop";
+    let clash = json!({"proxies":[{"name":"grpc","type":"vmess","server":"127.0.0.1","port":443,
+        "uuid":ID,"network":"grpc","grpc-opts":{"grpc-service-name":service}}]});
+    let singbox = json!({"outbounds":[{"tag":"grpc","type":"vmess","server":"127.0.0.1","server_port":443,
+        "uuid":ID,"transport":{"type":"grpc","service_name":service}}]});
+    let share = json!({"v":"2","add":"127.0.0.1","port":"443","id":ID,"aid":"0","net":"grpc","path":service});
+    for raw in [
+        serde_yaml::to_string(&clash).unwrap(),
+        singbox.to_string(),
+        format!(
+            "vmess://{}",
+            STANDARD.encode(serde_json::to_vec(&share).unwrap())
+        ),
+    ] {
+        let parsed = parse_any(&raw).unwrap();
+        assert_eq!(parsed.proxies.len(), 1);
+        assert_eq!(parsed.proxies[0].network.as_deref(), Some("grpc"));
+        assert_eq!(parsed.proxies[0].grpc_service.as_deref(), Some(service));
+    }
+}
+
+#[test]
 fn websocket_share_link_retains_path_host_and_transport() {
     let source = json!({"v":"2","add":"127.0.0.1","port":"443","id":ID,"aid":"0",
         "scy":"auto","net":"ws","path":"/mobile?token=fixture","host":"vmess.fixture.test"});

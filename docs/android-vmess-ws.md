@@ -1,5 +1,7 @@
 # VMess WebSocket 开发候选（未发布）
 
+本轮完整 CI 固定为提交 8e6b957。等待期间的下一项 [gRPC 独立互通准备](android-vmess-grpc.md) 不属于该 WS 产物或升级回执，手机 gRPC 仍未开放。
+
 接续基础 VMess AEAD TCP 候选。本轮在 Android 导入策略中增加 VMess 的 WebSocket，保留 UUID/cipher/alterId 构造校验及严格证书要求；其它协议的 WS、gRPC、Reality/Vision 等仍须分别接入。没有改变公开 Beta.9 或升级通道。
 
 后续候选递增为 code 13 / 0.2.0-beta.10，避免与已用于原签名验收的内部 code 12 混淆。code 13 的 8 项 JVM、Debug/Release、双 Lint 与 16 KiB 对齐通过（`artifacts/vmess-ws-code13-build.log`）。code 12 的较早回执不覆盖本轮候选。

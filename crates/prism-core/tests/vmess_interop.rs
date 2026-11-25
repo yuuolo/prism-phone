@@ -49,12 +49,18 @@ async fn server(tcp: u16, udp: u16, kind: &str, transport: &str) -> (Server, u16
             {"action":"allow","network":"tcp,udp","ip":["127.0.0.1"],"port":format!("{tcp},{udp}")}
         ]});
     }
+    let grpc_settings = if std::env::var("PRISM_VMESS_GRPC_DEFAULT").as_deref() == Ok("1") {
+        serde_json::json!({})
+    } else {
+        serde_json::json!({"serviceName":"PrismVmessInterop"})
+    };
     let config = serde_json::json!({
         "log":{"loglevel":"debug"},
         "inbounds":[{"listen":"127.0.0.1","port":port,"protocol":"vmess",
             "settings":{"clients":[{"id":ID,"alterId":0}]},
             "streamSettings":{"network":transport,"security":"none",
-                "wsSettings":{"path":"/prism-vmess-interop"}}}],
+                "wsSettings":{"path":"/prism-vmess-interop"},
+                "grpcSettings":grpc_settings}}],
         "outbounds":[freedom,{"tag":"blocked","protocol":"blackhole"}],
         "routing":{"domainStrategy":"AsIs","rules":[
             {"type":"field","ip":["127.0.0.1"],"port":format!("{tcp},{udp}"),"outboundTag":"echo"},
@@ -105,6 +111,7 @@ fn client(port: u16, cipher: &str, uuid: &str, transport: &str, path: &str) -> V
             network: Some(transport.into()),
             ws_path: Some(path.into()),
             ws_host: Some("vmess.fixture.test".into()),
+            grpc_service: (transport == "grpc" && !path.is_empty()).then(|| path.into()),
             ..Default::default()
         },
         Dialer::Direct,
@@ -118,7 +125,18 @@ async fn independent_server_tcp_udp_and_bad_credentials() {
     let kind = std::env::var("PRISM_VMESS_SERVER_KIND").unwrap_or_else(|_| "xray".into());
     assert!(matches!(kind.as_str(), "xray" | "v2fly"));
     let transport = std::env::var("PRISM_VMESS_TRANSPORT").unwrap_or_else(|_| "tcp".into());
-    assert!(matches!(transport.as_str(), "tcp" | "ws"));
+    assert!(matches!(transport.as_str(), "tcp" | "ws" | "grpc"));
+    let default_service = std::env::var("PRISM_VMESS_GRPC_DEFAULT").as_deref() == Ok("1");
+    assert!(!default_service || transport == "grpc");
+    let endpoint = if transport == "grpc" {
+        if default_service {
+            ""
+        } else {
+            "PrismVmessInterop"
+        }
+    } else {
+        "/prism-vmess-interop"
+    };
     // Keep the large-datagram probe separate and explicit: V2Fly 5.53.0's
     // packet writer uses a 2048-byte buffer. A passing common-size run does
     // not establish large-datagram interoperability with that server.
@@ -128,7 +146,7 @@ async fn independent_server_tcp_udp_and_bad_credentials() {
     } else {
         &[1, 1200, 1900]
     };
-    eprintln!("server={kind}, transport={transport}, large_udp={large_udp}");
+    eprintln!("server={kind}, transport={transport}, default_service={default_service}, large_udp={large_udp}");
     let tcp = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let tcp_port = tcp.local_addr().unwrap().port();
     let delivered = Arc::new(AtomicUsize::new(0));
@@ -169,7 +187,7 @@ async fn independent_server_tcp_udp_and_bad_credentials() {
     };
     for &cipher in ciphers {
         eprintln!("checking {kind}: {cipher}");
-        let node = client(port, cipher, ID, &transport, "/prism-vmess-interop");
+        let node = client(port, cipher, ID, &transport, endpoint);
         let payload: Vec<u8> = (0..70000).map(|i| (i % 251) as u8).collect();
         tokio::time::timeout(Duration::from_secs(5), async {
             let mut stream = node
@@ -202,7 +220,7 @@ async fn independent_server_tcp_udp_and_bad_credentials() {
         "auto",
         "1b6a0b4e-1111-4222-8333-444455556666",
         &transport,
-        "/prism-vmess-interop",
+        endpoint,
     );
     let received = tokio::time::timeout(Duration::from_secs(5), async {
         let mut stream = bad.connect(&Address::new("127.0.0.1", tcp_port)).await?;
@@ -235,6 +253,28 @@ async fn independent_server_tcp_udp_and_bad_credentials() {
             delivered.load(Ordering::SeqCst),
             before_bad,
             "Wrong WS path reached the target"
+        );
+    }
+    if transport == "grpc" {
+        let bad_service = client(port, "auto", ID, &transport, "WrongPrismService");
+        let rejected = tokio::time::timeout(Duration::from_secs(5), async {
+            let mut stream = bad_service
+                .connect(&Address::new("127.0.0.1", tcp_port))
+                .await?;
+            stream
+                .write_all(b"wrong gRPC service must not reach target")
+                .await?;
+            stream.read(&mut [0u8; 1]).await
+        })
+        .await;
+        assert!(
+            matches!(rejected, Ok(Err(_)) | Ok(Ok(0))),
+            "Wrong service must be rejected promptly"
+        );
+        assert_eq!(
+            delivered.load(Ordering::SeqCst),
+            before_bad,
+            "Wrong gRPC service reached target"
         );
     }
 }
