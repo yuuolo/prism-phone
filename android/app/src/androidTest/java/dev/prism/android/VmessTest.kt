@@ -100,8 +100,12 @@ class VmessTest {
         if(Build.VERSION.SDK_INT>=33)shell("pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS")
         val id="0b6a0b4e-1111-4222-8333-444455556666"
         val transport=InstrumentationRegistry.getArguments().getString("vmessTransport","tcp")
-        require(transport in listOf("tcp","ws"))
-        val ws=if(transport=="ws") ", network: ws, ws-opts: {path: /prism-vmess-mobile, headers: {Host: vmess.fixture.test}}" else ""
+        require(transport in listOf("tcp","ws","grpc"))
+        val ws=when(transport) {
+            "ws" -> ", network: ws, ws-opts: {path: /prism-vmess-mobile, headers: {Host: vmess.fixture.test}}"
+            "grpc" -> ", network: grpc, grpc-opts: {grpc-service-name: PrismVmessMobile}"
+            else -> ""
+        }
         store.import("""proxies:
           - {name: VMess direct, type: vmess, server: 10.0.2.2, port: 19094, uuid: $id, alterId: 0, cipher: auto, udp: true$ws}
           - {name: VMess first, type: socks5, server: 10.0.2.2, port: 19097}

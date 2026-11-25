@@ -17,11 +17,15 @@ class BackgroundSeedInstrumentation:Instrumentation() {
         try {
             check(Build.HARDWARE in listOf("ranchu","goldfish"))
             check(targetContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0)
-            check(transport in listOf("tcp","ws"))
+            check(transport in listOf("tcp","ws","grpc"))
             targetContext.getSharedPreferences("prism-mobile",0).edit().clear().commit()
             Updates.setEnabled(targetContext,false)
             val store=ProfileStore(targetContext)
-            val ws=if(transport=="ws") ", network: ws, ws-opts: {path: /prism-vmess-mobile, headers: {Host: vmess.fixture.test}}" else ""
+            val ws=when(transport) {
+                "ws" -> ", network: ws, ws-opts: {path: /prism-vmess-mobile, headers: {Host: vmess.fixture.test}}"
+                "grpc" -> ", network: grpc, grpc-opts: {grpc-service-name: PrismVmessMobile}"
+                else -> ""
+            }
             val profile=if(vmess) "proxies: [{name: Background first, type: socks5, server: 10.0.2.2, port: 19097}, {name: Background VMess, type: vmess, server: 127.0.0.1, port: 19094, uuid: 0b6a0b4e-1111-4222-8333-444455556666, alterId: 0, cipher: auto$ws}]"
                 else "proxies: [{name: Background first, type: socks5, server: 10.0.2.2, port: 19092}, {name: Background exit, type: socks5, server: 127.0.0.1, port: 19090}]"
             store.import(profile,false)
@@ -36,7 +40,8 @@ class BackgroundSeedInstrumentation:Instrumentation() {
             val routing=JSONObject().put("version",1).put("defaultTarget","REJECT").put("groups",JSONArray().put(JSONObject().put("name","Background real DNS acceptance").put("enabled",true).put("rules",rules)))
             store.updateRouting(store.load().getJSONObject("routing").toString(),routing)
             TestSetup.configured(targetContext)
-            finish(Activity.RESULT_OK,Bundle().apply{putString("backgroundFixture",if(vmess && transport=="ws") "seeded-vmess-ws-cold-dns-v1" else if(vmess) "seeded-vmess-cold-dns-v1" else "seeded-cold-dns-v1")})
+            val marker=if(!vmess) "seeded-cold-dns-v1" else if(transport=="tcp") "seeded-vmess-cold-dns-v1" else "seeded-vmess-$transport-cold-dns-v1"
+            finish(Activity.RESULT_OK,Bundle().apply{putString("backgroundFixture",marker)})
         }catch(error:Throwable){finish(Activity.RESULT_CANCELED,Bundle().apply{putString("backgroundFixture","failed");putString("failureType",error.javaClass.simpleName)})}
     }
 }

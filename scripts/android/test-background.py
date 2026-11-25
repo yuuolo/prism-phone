@@ -24,10 +24,10 @@ def main():
     parser.add_argument("--output", required=True)
     parser.add_argument("--idle-seconds", type=int, default=180)
     parser.add_argument("--vmess", action="store_true", help="Use the independent VMess server chain fixture")
-    parser.add_argument("--vmess-transport", choices=["tcp", "ws"], default="tcp")
+    parser.add_argument("--vmess-transport", choices=["tcp", "ws", "grpc"], default="tcp")
     args = parser.parse_args()
-    if args.vmess_transport == "ws" and not args.vmess:
-        parser.error("--vmess-transport ws requires --vmess")
+    if args.vmess_transport != "tcp" and not args.vmess:
+        parser.error("--vmess-transport ws/grpc requires --vmess")
     if not re.fullmatch(r"emulator-[0-9]+", args.serial) or not 20 <= args.idle_seconds <= 3600:
         parser.error("Use an owned emulator serial and an idle duration in 20..3600")
 
@@ -125,7 +125,7 @@ def main():
         if not Path(path).is_file():
             raise RuntimeError("Missing acceptance input")
 
-    report = {"serial": args.serial, "avd": avd, "idleSeconds": args.idle_seconds, "mode": ("vmess-ws-chain" if args.vmess_transport == "ws" else "vmess-chain") if args.vmess else "basic-chain", "ok": False}
+    report = {"serial": args.serial, "avd": avd, "idleSeconds": args.idle_seconds, "mode": (f"vmess-{args.vmess_transport}-chain" if args.vmess_transport != "tcp" else "vmess-chain") if args.vmess else "basic-chain", "ok": False}
     phase = "setup"
     power_changed = False
     succeeded = False
@@ -134,7 +134,7 @@ def main():
         shell("am", "force-stop", "dev.prism.android")
         seed_args = ["-e", "vmess", "true", "-e", "vmessTransport", args.vmess_transport] if args.vmess else []
         seed = shell("am", "instrument", "-w", *seed_args, "dev.prism.android.test/dev.prism.android.BackgroundSeedInstrumentation")
-        marker = ("seeded-vmess-ws-cold-dns-v1" if args.vmess_transport == "ws" else "seeded-vmess-cold-dns-v1") if args.vmess else "seeded-cold-dns-v1"
+        marker = (f"seeded-vmess-{args.vmess_transport}-cold-dns-v1" if args.vmess_transport != "tcp" else "seeded-vmess-cold-dns-v1") if args.vmess else "seeded-cold-dns-v1"
         if f"backgroundFixture={marker}" not in seed:
             raise RuntimeError("Seed runner did not prepare the disposable fixture")
         shell("am", "force-stop", "dev.prism.android")
