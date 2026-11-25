@@ -64,6 +64,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", required=True)
     parser.add_argument("--kind", required=True, choices=["xray", "v2fly"])
+    parser.add_argument("--transport", choices=["tcp", "ws"], default="tcp")
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args()
     binary = Path(args.binary).resolve(strict=True)
@@ -80,7 +81,8 @@ def main():
         "log": {"loglevel": "info"},
         "inbounds": [{"listen": "127.0.0.1", "port": VMESS_PORT, "protocol": "vmess",
             "settings": {"clients": [{"id": ID, "alterId": 0}]},
-            "streamSettings": {"network": "tcp", "security": "none"}}],
+            "streamSettings": {"network": args.transport, "security": "none",
+                "wsSettings": {"path": "/prism-vmess-mobile"}}}],
         "outbounds": [
             {"tag": "tls-relay", "protocol": "socks", "settings": {
                 "servers": [{"address": "127.0.0.1", "port": 19090}]}},

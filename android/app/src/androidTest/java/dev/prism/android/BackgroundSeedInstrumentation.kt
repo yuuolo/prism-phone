@@ -11,15 +11,18 @@ import org.json.JSONObject
  * it neither starts the VPN nor stays attached during background acceptance. */
 class BackgroundSeedInstrumentation:Instrumentation() {
     private var vmess=false
-    override fun onCreate(arguments:Bundle?) {super.onCreate(arguments);vmess=arguments?.getString("vmess")=="true";start()}
+    private var transport="tcp"
+    override fun onCreate(arguments:Bundle?) {super.onCreate(arguments);vmess=arguments?.getString("vmess")=="true";transport=arguments?.getString("vmessTransport") ?: "tcp";start()}
     override fun onStart() {
         try {
             check(Build.HARDWARE in listOf("ranchu","goldfish"))
             check(targetContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0)
+            check(transport in listOf("tcp","ws"))
             targetContext.getSharedPreferences("prism-mobile",0).edit().clear().commit()
             Updates.setEnabled(targetContext,false)
             val store=ProfileStore(targetContext)
-            val profile=if(vmess) "proxies: [{name: Background first, type: socks5, server: 10.0.2.2, port: 19097}, {name: Background VMess, type: vmess, server: 127.0.0.1, port: 19094, uuid: 0b6a0b4e-1111-4222-8333-444455556666, alterId: 0, cipher: auto}]"
+            val ws=if(transport=="ws") ", network: ws, ws-opts: {path: /prism-vmess-mobile, headers: {Host: vmess.fixture.test}}" else ""
+            val profile=if(vmess) "proxies: [{name: Background first, type: socks5, server: 10.0.2.2, port: 19097}, {name: Background VMess, type: vmess, server: 127.0.0.1, port: 19094, uuid: 0b6a0b4e-1111-4222-8333-444455556666, alterId: 0, cipher: auto$ws}]"
                 else "proxies: [{name: Background first, type: socks5, server: 10.0.2.2, port: 19092}, {name: Background exit, type: socks5, server: 127.0.0.1, port: 19090}]"
             store.import(profile,false)
             val nodes=store.load().getJSONArray("nodes")
@@ -33,7 +36,7 @@ class BackgroundSeedInstrumentation:Instrumentation() {
             val routing=JSONObject().put("version",1).put("defaultTarget","REJECT").put("groups",JSONArray().put(JSONObject().put("name","Background real DNS acceptance").put("enabled",true).put("rules",rules)))
             store.updateRouting(store.load().getJSONObject("routing").toString(),routing)
             TestSetup.configured(targetContext)
-            finish(Activity.RESULT_OK,Bundle().apply{putString("backgroundFixture",if(vmess) "seeded-vmess-cold-dns-v1" else "seeded-cold-dns-v1")})
+            finish(Activity.RESULT_OK,Bundle().apply{putString("backgroundFixture",if(vmess && transport=="ws") "seeded-vmess-ws-cold-dns-v1" else if(vmess) "seeded-vmess-cold-dns-v1" else "seeded-cold-dns-v1")})
         }catch(error:Throwable){finish(Activity.RESULT_CANCELED,Bundle().apply{putString("backgroundFixture","failed");putString("failureType",error.javaClass.simpleName)})}
     }
 }

@@ -29,7 +29,7 @@ impl Drop for Server {
     }
 }
 
-async fn server(tcp: u16, udp: u16, kind: &str) -> (Server, u16) {
+async fn server(tcp: u16, udp: u16, kind: &str, transport: &str) -> (Server, u16) {
     let binary = PathBuf::from(
         std::env::var_os("PRISM_VMESS_SERVER_BIN")
             .or_else(|| std::env::var_os("PRISM_XRAY_BIN"))
@@ -53,7 +53,8 @@ async fn server(tcp: u16, udp: u16, kind: &str) -> (Server, u16) {
         "log":{"loglevel":"debug"},
         "inbounds":[{"listen":"127.0.0.1","port":port,"protocol":"vmess",
             "settings":{"clients":[{"id":ID,"alterId":0}]},
-            "streamSettings":{"network":"tcp","security":"none"}}],
+            "streamSettings":{"network":transport,"security":"none",
+                "wsSettings":{"path":"/prism-vmess-interop"}}}],
         "outbounds":[freedom,{"tag":"blocked","protocol":"blackhole"}],
         "routing":{"domainStrategy":"AsIs","rules":[
             {"type":"field","ip":["127.0.0.1"],"port":format!("{tcp},{udp}"),"outboundTag":"echo"},
@@ -93,7 +94,7 @@ async fn server(tcp: u16, udp: u16, kind: &str) -> (Server, u16) {
     (child, port)
 }
 
-fn client(port: u16, cipher: &str, uuid: &str) -> Vmess {
+fn client(port: u16, cipher: &str, uuid: &str, transport: &str, path: &str) -> Vmess {
     Vmess::new(
         &ProxyConfig {
             name: "interop".into(),
@@ -101,6 +102,9 @@ fn client(port: u16, cipher: &str, uuid: &str) -> Vmess {
             port,
             uuid: Some(uuid.into()),
             cipher: Some(cipher.into()),
+            network: Some(transport.into()),
+            ws_path: Some(path.into()),
+            ws_host: Some("vmess.fixture.test".into()),
             ..Default::default()
         },
         Dialer::Direct,
@@ -113,6 +117,8 @@ fn client(port: u16, cipher: &str, uuid: &str) -> Vmess {
 async fn independent_server_tcp_udp_and_bad_credentials() {
     let kind = std::env::var("PRISM_VMESS_SERVER_KIND").unwrap_or_else(|_| "xray".into());
     assert!(matches!(kind.as_str(), "xray" | "v2fly"));
+    let transport = std::env::var("PRISM_VMESS_TRANSPORT").unwrap_or_else(|_| "tcp".into());
+    assert!(matches!(transport.as_str(), "tcp" | "ws"));
     // Keep the large-datagram probe separate and explicit: V2Fly 5.53.0's
     // packet writer uses a 2048-byte buffer. A passing common-size run does
     // not establish large-datagram interoperability with that server.
@@ -122,7 +128,7 @@ async fn independent_server_tcp_udp_and_bad_credentials() {
     } else {
         &[1, 1200, 1900]
     };
-    eprintln!("server={kind}, large_udp={large_udp}");
+    eprintln!("server={kind}, transport={transport}, large_udp={large_udp}");
     let tcp = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let tcp_port = tcp.local_addr().unwrap().port();
     let delivered = Arc::new(AtomicUsize::new(0));
@@ -153,7 +159,7 @@ async fn independent_server_tcp_udp_and_bad_credentials() {
             let _ = udp.send_to(&buf[..n], peer).await;
         }
     });
-    let (_server, port) = server(tcp_port, udp_port, &kind).await;
+    let (_server, port) = server(tcp_port, udp_port, &kind, &transport).await;
     // Xray 26.11.9 does not accept none/zero security types. V2Fly independently
     // exercises those formats; neither server's accepted set is fabricated.
     let ciphers: &[&str] = if kind == "v2fly" {
@@ -163,7 +169,7 @@ async fn independent_server_tcp_udp_and_bad_credentials() {
     };
     for &cipher in ciphers {
         eprintln!("checking {kind}: {cipher}");
-        let node = client(port, cipher, ID);
+        let node = client(port, cipher, ID, &transport, "/prism-vmess-interop");
         let payload: Vec<u8> = (0..70000).map(|i| (i % 251) as u8).collect();
         tokio::time::timeout(Duration::from_secs(5), async {
             let mut stream = node
@@ -191,7 +197,13 @@ async fn independent_server_tcp_udp_and_bad_credentials() {
         }
     }
     let before_bad = delivered.load(Ordering::SeqCst);
-    let bad = client(port, "auto", "1b6a0b4e-1111-4222-8333-444455556666");
+    let bad = client(
+        port,
+        "auto",
+        "1b6a0b4e-1111-4222-8333-444455556666",
+        &transport,
+        "/prism-vmess-interop",
+    );
     let received = tokio::time::timeout(Duration::from_secs(5), async {
         let mut stream = bad.connect(&Address::new("127.0.0.1", tcp_port)).await?;
         stream.write_all(b"wrong credential must not echo").await?;
@@ -208,4 +220,21 @@ async fn independent_server_tcp_udp_and_bad_credentials() {
         before_bad,
         "Wrong UUID reached the target"
     );
+    if transport == "ws" {
+        let wrong_path = client(port, "auto", ID, &transport, "/wrong-prism-path");
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            wrong_path.connect(&Address::new("127.0.0.1", tcp_port)),
+        )
+        .await;
+        assert!(
+            matches!(result, Ok(Err(_))),
+            "Wrong WS path must fail the upgrade"
+        );
+        assert_eq!(
+            delivered.load(Ordering::SeqCst),
+            before_bad,
+            "Wrong WS path reached the target"
+        );
+    }
 }

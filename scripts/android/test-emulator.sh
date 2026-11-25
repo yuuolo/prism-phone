@@ -16,6 +16,7 @@ if [ "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" -ge 37 ]; then
   vmess_binary="$base/v2fly/v2ray"
   vmess_ciphers="$vmess_ciphers,none,zero"
 fi
+
 python3 -u scripts/android/vmess-fixture.py --binary "$vmess_binary" --kind "$vmess_kind" \
   --output-dir emulator-results/vmess-server > emulator-results/vmess-fixture.txt 2>&1 &
 vmess_pid=$!
@@ -52,4 +53,32 @@ if [ -n "${2:-}" ]; then
     --seed-apk background-tools/seed.apk --client background-tools/prism-acceptance-client \
     --ui-tool background-tools/prism-ui-snapshot.jar --vmess \
     --output emulator-results/vmess-background.json --idle-seconds 180 | tee emulator-results/vmess-background.txt
+fi
+
+# Keep the TCP fixture through its foreground and idle regressions, then
+# switch the independent server for a separate WebSocket acceptance run.
+kill "$vmess_pid"
+wait "$vmess_pid"
+vmess_pid=''
+python3 -u scripts/android/vmess-fixture.py --binary "$vmess_binary" --kind "$vmess_kind" --transport ws \
+  --output-dir emulator-results/vmess-ws-server > emulator-results/vmess-ws-fixture.txt 2>&1 &
+vmess_pid=$!
+for attempt in {1..40}; do
+  grep -q 'VMess mobile fixture ready' emulator-results/vmess-ws-fixture.txt && break
+  kill -0 "$vmess_pid"
+  sleep .25
+done
+grep -q 'VMess mobile fixture ready' emulator-results/vmess-ws-fixture.txt
+adb install -r "$test"
+adb shell am instrument -w -e class dev.prism.android.VmessTest -e vmessTransport ws \
+  -e vmessCiphers "$vmess_ciphers" dev.prism.android.test/androidx.test.runner.AndroidJUnitRunner | tee emulator-results/vmess-ws-instrumentation.txt
+adb logcat -d > emulator-results/vmess-ws-logcat.txt
+adb pull /sdcard/Android/data/dev.prism.android/files/vmess-acceptance.json emulator-results/vmess-ws-acceptance.json || true
+grep -Eq '^OK \(1 test\)' emulator-results/vmess-ws-instrumentation.txt
+if [ -n "${2:-}" ]; then
+  python3 -u scripts/android/test-background.py \
+    --adb "$(command -v adb)" --serial "$(adb get-serialno)" --expected-avd "$2" \
+    --seed-apk background-tools/seed.apk --client background-tools/prism-acceptance-client \
+    --ui-tool background-tools/prism-ui-snapshot.jar --vmess --vmess-transport ws \
+    --output emulator-results/vmess-ws-background.json --idle-seconds 180 | tee emulator-results/vmess-ws-background.txt
 fi

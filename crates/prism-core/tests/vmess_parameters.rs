@@ -4,6 +4,23 @@ use serde_json::{json, Value};
 
 const ID: &str = "0b6a0b4e-1111-4222-8333-444455556666";
 
+#[test]
+fn websocket_share_link_retains_path_host_and_transport() {
+    let source = json!({"v":"2","add":"127.0.0.1","port":"443","id":ID,"aid":"0",
+        "scy":"auto","net":"ws","path":"/mobile?token=fixture","host":"vmess.fixture.test"});
+    let raw = format!(
+        "vmess://{}",
+        STANDARD.encode(serde_json::to_vec(&source).unwrap())
+    );
+    let parsed = parse_any(&raw).unwrap();
+    assert_eq!(parsed.proxies.len(), 1);
+    let node = &parsed.proxies[0];
+    assert_eq!(node.kind(), ProxyKind::Vmess);
+    assert_eq!(node.network.as_deref(), Some("ws"));
+    assert_eq!(node.ws_path.as_deref(), Some("/mobile?token=fixture"));
+    assert_eq!(node.ws_host.as_deref(), Some("vmess.fixture.test"));
+}
+
 fn sources(alter_id: Value) -> Vec<String> {
     let clash = json!({"proxies":[{"name":"parameter","type":"vmess","server":"127.0.0.1",
         "port":443,"uuid":ID,"cipher":"auto","alterId":alter_id.clone()}]});

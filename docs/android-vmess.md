@@ -1,5 +1,7 @@
 # Android VMess 本地候选验收（未发布）
 
+后续 WebSocket 候选已取得独立服务端及 API 26 前台/后台证据，API 37 和完整 CI 尚待补齐，见 [WebSocket 接入验收](android-vmess-ws.md)。本文 code 12 完整回执仍仅对应基础 TCP 提交，不扩展为后续 WS 的验收结论。
+
 本地开发候选已开放 TCP/TLS VMess AEAD 导入；已公开的 Beta.9 网络恢复修复包不包含此功能。只有独立服务端互通与 Android TUN 验收同时通过才计入候选证据，不能把共享内核实现当作已发布。包名、签名及更新通道未更改；iOS 与 HarmonyOS NEXT 暂停。
 
 开发分支已合入 Beta.9 发布基线，候选 versionCode 12 / 0.2.0-beta.10，尚未发布。修复后的提交 2b4077c 已通过完整 CI 45603456511 和原签名覆盖升级，具体范围见本文末尾；较早 code 10 或失败 CI 的产物不代替本次候选证据。

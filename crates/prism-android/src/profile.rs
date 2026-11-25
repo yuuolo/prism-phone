@@ -43,7 +43,10 @@ pub(crate) fn supported(node: &ProxyConfig) -> bool {
             | ProxyKind::Socks5
             | ProxyKind::Http
     ) && node.dialer_proxy.is_none()
-        && matches!(node.network.as_deref(), None | Some("") | Some("tcp"))
+        && (matches!(node.network.as_deref(), None | Some("") | Some("tcp"))
+            || (node.kind() == ProxyKind::Vmess && node.network.as_deref() == Some("ws")
+                && node.ws_path.as_ref().is_none_or(|v| v.len() <= 2048 && v.bytes().all(|b| (33..=126).contains(&b)))
+                && node.ws_host.as_ref().is_none_or(|v| !v.is_empty() && v.len() <= 255 && v.bytes().all(|b| (33..=126).contains(&b)))))
         && node.fingerprint.is_none()
         && node.reality_public_key.is_none()
         && node.flow.is_none()
@@ -204,6 +207,14 @@ mod tests {
             assert!(!supported(&invalid));
             invalid = n.clone();
             invalid.network = Some("ws".into());
+            assert!(supported(&invalid));
+            invalid.ws_host = Some("bad\r\nInjected: value".into());
+            assert!(!supported(&invalid));
+            invalid.ws_host = None;
+            invalid.ws_path = Some("/bad path".into());
+            assert!(!supported(&invalid));
+            invalid.ws_path = None;
+            invalid.network = Some("grpc".into());
             assert!(!supported(&invalid));
             invalid = n;
             invalid.skip_cert_verify = true;

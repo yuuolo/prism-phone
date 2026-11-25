@@ -99,10 +99,13 @@ class VmessTest {
         if(Build.VERSION.SDK_INT>=37)shell("pm grant ${context.packageName} ${LocalNetworkAccess.permission}")
         if(Build.VERSION.SDK_INT>=33)shell("pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS")
         val id="0b6a0b4e-1111-4222-8333-444455556666"
+        val transport=InstrumentationRegistry.getArguments().getString("vmessTransport","tcp")
+        require(transport in listOf("tcp","ws"))
+        val ws=if(transport=="ws") ", network: ws, ws-opts: {path: /prism-vmess-mobile, headers: {Host: vmess.fixture.test}}" else ""
         store.import("""proxies:
-          - {name: VMess direct, type: vmess, server: 10.0.2.2, port: 19094, uuid: $id, alterId: 0, cipher: auto, udp: true}
+          - {name: VMess direct, type: vmess, server: 10.0.2.2, port: 19094, uuid: $id, alterId: 0, cipher: auto, udp: true$ws}
           - {name: VMess first, type: socks5, server: 10.0.2.2, port: 19097}
-          - {name: VMess chain exit, type: vmess, server: 127.0.0.1, port: 19094, uuid: $id, alterId: 0, cipher: auto, udp: true}
+          - {name: VMess chain exit, type: vmess, server: 127.0.0.1, port: 19094, uuid: $id, alterId: 0, cipher: auto, udp: true$ws}
           - {name: VMess dead candidate, type: socks5, server: 127.0.0.1, port: 19999}
         """.trimIndent(),false)
         val nodes=store.load().getJSONArray("nodes");val direct=nodes.getJSONObject(0).getString("_id");val bridge=nodes.getJSONObject(1).getString("_id");val exit=nodes.getJSONObject(2).getString("_id");val dead=nodes.getJSONObject(3).getString("_id")
@@ -143,7 +146,7 @@ class VmessTest {
             } else assertFalse(status().getBoolean("running"))
             phases.put(JSONObject().put("wrongCredentialsRefused",true));complete=true
         } finally {
-            File(context.getExternalFilesDir(null),"vmess-acceptance.json").writeText(JSONObject().put("complete",complete).put("phases",phases).toString())
+            File(context.getExternalFilesDir(null),"vmess-acceptance.json").writeText(JSONObject().put("complete",complete).put("transport",transport).put("phases",phases).toString())
             if(PrismVpnService.stage in listOf("已连接","正在连接","正在断开"))stop()
             context.getSharedPreferences("prism-mobile",0).edit().clear().commit()
         }
