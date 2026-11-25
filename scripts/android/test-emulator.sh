@@ -2,8 +2,8 @@
 set -euo pipefail
 mkdir -p emulator-results
 sdk=$(adb shell getprop ro.build.version.sdk | tr -d '\r')
-adb shell getconf PAGE_SIZE | tr -d '\r' > emulator-results/page-size.txt
 if [ "$sdk" -ge 37 ]; then
+  adb shell getconf PAGE_SIZE | tr -d '\r' > emulator-results/page-size.txt
   grep -Fxq '16384' emulator-results/page-size.txt
 fi
 python3 -u scripts/android/doh-fixture.py --acceptance-domains > emulator-results/doh-fixture.txt 2>&1 &

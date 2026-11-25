@@ -16,7 +16,9 @@ API 37 独立 gRPC 双跳后台也通过（`artifacts/vmess-grpc-background-api3
 
 首次失败之后，测试工具另补充固定阶段标签（TCP/代理握手、TLS、HTTP）及失败前后匿名重建/包数/流量/连接数，未记录载荷、凭据或任意目的地，未改变时限、重试与 TLS 判定。该诊断编译通过（`artifacts/vmess-probe-diagnostic-compile.log`），仅供后续失败定位；不包含在下面固定 4c76743 的 CI 中，也不能据此解释首次失败。该 CI 固定源码的 code14 原签名升级助手已单独编译通过，尚未签名或安装候选。
 
-完整模拟器脚本安排 TCP→WS→gRPC 顺序切换，每种新增传输单独前台专项、回执及 180 秒后台报告；预期两端共 56 项测试、8 份后台报告。新增实际页大小回执及 API 37 的 16384 校验，shell 语法检查通过。[本轮 CI 45681805383](https://github.com/yuuolo/prism-phone/actions/runs/45681805383) 固定为 4c767435beb1d14da38280c3b1e23b34ce51480d，正在运行；未重新启动。完整 CI 与 code 13→14 原签名升级尚待完成。
+完整模拟器脚本安排 TCP→WS→gRPC 顺序切换，每种新增传输单独前台专项、回执及 180 秒后台报告；预期两端共 56 项测试、8 份后台报告。[CI 45681805383](https://github.com/yuuolo/prism-phone/actions/runs/45681805383) 固定为 4c767435beb1d14da38280c3b1e23b34ce51480d：构建通过，API 26 在应用测试前因镜像无 `getconf` 而退出 127，该轮产物不得用于签名升级。API 37 原作业仍继续观察，未因另一端失败而取消。
+
+页大小检查已修正为仅在 API 37+ 查询并严格要求 16384，保留该矩阵的实际 16 KiB 校验；不再对 Android 8 调用不存在的命令。执行实际脚本前缀的受控 shell 回归通过：API 26/无 getconf 可继续、API 37/16384 可继续、API 37/4096 必须失败（`artifacts/page-size-preflight-regression.log`）。修正后的完整 CI 与 code 13→14 原签名升级尚待完成。
 
 按 [V2Fly gRPC 配置](https://www.v2fly.org/config/transport/grpc.html) 核对 serviceName 和 Tun 路由。独立测试同时覆盖显式服务名 PrismVmessInterop，以及双方均不设置服务名的缺省配置；使用实际 Go 服务端结果，没有更改运行中的协议实现来满足测试。
 
