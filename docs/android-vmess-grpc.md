@@ -24,3 +24,5 @@ WS code 13 的完整 CI 运行期间，继续验证下一项 gRPC 的共享内�
 新增 `grpc_frames` 三项回归覆盖上述畸形输入、上限声明，以及分片/合并传输的 70,000 字节和空载荷。本地通过，90 项内核单元和 5 项参数回归通过；修正后 Xray/V2Fly 的自定义、缺省服务名共四轮独立互通重新通过，日志为 `artifacts/vmess-grpc-bounded-*.log`。该变化尚需后续 Linux CI；正在运行的 45675078331 不包含它，不以此改动替换该运行的源码归属。手机 gRPC 继续关闭。
 
 手机专项工具已增加可选 `grpc` 传输，使用服务名 `PrismVmessMobile`，前台参数、后台种子及 `vmess-grpc-chain` / `seeded-vmess-grpc-cold-dns-v1` 标记相互对应。两种 Go 服务端的专用回环夹具均启动成功（`artifacts/vmess-grpc-mobile-host-*/fixture.log`），随后回收父/子进程；仪器测试编译通过（`artifacts/vmess-grpc-harness-compile.log`）。这仅是工具准备，不是 Android gRPC 流量验收，默认仍运行原 TCP，尚未加入手机 CI 执行阶段。
+
+后续补充 HTTP/2 实际收发边界回归：内存双工连接上的独立 h2 服务端发送非法压缩标记或超大声明后保持响应体开放，客户端必须在 2 秒界限内关闭，不等待正文或对端 EOF。同步信号确认服务端已校验路由并发送，避免将服务端提前失败误算为通过。`grpc_frames` 现共 4 项通过（`artifacts/vmess-grpc-wire-bounds.log`）；此项不验证公网、TLS 或 Android。
