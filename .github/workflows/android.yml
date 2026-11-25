@@ -49,8 +49,8 @@ jobs:
           python3 -m unittest discover -s scripts/android/tests -v
           cargo test -p prism-android --lib --locked
           cargo test -p prism-android --test ws_profile --locked
-            cargo test -p prism-android --test grpc_profile --locked
-            cargo test -p prism-core --lib --test anytls_wire --test relay_tls_wire --test dns_fallback --test mobile_traffic --test dns_privacy_routing --test fake_ip_rules --test network_recovery --test vmess_parameters --test grpc_frames --locked
+          cargo test -p prism-android --test grpc_profile --locked
+          cargo test -p prism-core --lib --test anytls_wire --test relay_tls_wire --test dns_fallback --test mobile_traffic --test dns_privacy_routing --test fake_ip_rules --test network_recovery --test vmess_parameters --test grpc_frames --locked
       - name: Independent VMess server tests
         run: bash scripts/android/test-vmess-interop.sh
       - name: Build Android native libraries

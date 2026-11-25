@@ -8,7 +8,11 @@ API 26 / Xray 的 gRPC 三种 AEAD 配置通过实际 TUN、严格 TLS、1200 �
 
 API 26 独立 gRPC 双跳后台验收同样通过（`artifacts/vmess-grpc-background-api26.json`）：普通应用 UI 启动、种子退出后强制 IDLE 180 秒，PID 5185 与 VPN 108/tun0 不变，三阶段冷 fake-IP DNS、严格 TLS/HTTP 200，断开不复活及断开对照拒绝。没有保活请求或模拟器系统界面干预；验收后关闭该调试实例及核实身份的夹具，保留两份原签名样本。
 
-API 37 前台/后台、完整 CI 与本轮原签名升级仍待完成，不能用核心互通或 API 26 结果代替。
+API 37 / 实测 16384 字节页、V2Fly 的首次专项在首个 TLS 握手超时，networkRebuilds 为 0→0，complete=false、phases 为空；记录 `artifacts/vmess-grpc-api37-initial-failure.log`、`initial-logcat.txt`、`initial-server.log`、`initial-evidence.json` 均保留。固定转发夹具记录首条连接 up=530/down=4090 后客户端关闭，但这些计数不能确定超时原因。之后同一夹具的严格证书 TLS 主机对照两次成功（`vmess-grpc-api37-relay-control.log`），不证明先前公网链路一定正常。
+
+在未改源码、未增内部重试、未放宽 TLS 的独立复核中，五种配置及链式、重建、本机代理、优选、错误 UUID 拒绝全部通过：`vmess-grpc-api37-recheck.log` 为 1 项 / 35.201 秒；`vmess-grpc-api37-recheck-evidence.json` 为 complete=true、transport=grpc。首次超时根因仍未确认，不宣称已修复。API 37 后台正在运行；完整 CI 与本轮原签名升级仍待完成。
+
+完整模拟器脚本已安排 TCP→WS→gRPC 顺序切换，每种新增传输单独前台专项、回执及 180 秒后台报告；预期两端共 56 项测试、8 份后台报告。新增实际页大小回执及 API 37 的 16384 校验；目前仅通过 shell 语法检查，尚未执行本轮远端 CI。
 
 按 [V2Fly gRPC 配置](https://www.v2fly.org/config/transport/grpc.html) 核对 serviceName 和 Tun 路由。独立测试同时覆盖显式服务名 PrismVmessInterop，以及双方均不设置服务名的缺省配置；使用实际 Go 服务端结果，没有更改运行中的协议实现来满足测试。
 
