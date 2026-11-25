@@ -4,7 +4,7 @@
 
 | 用户目标 | 接入与验收安排 | 当前状态 |
 | --- | --- | --- |
-| Reality/Vision、VMess、Hysteria2、TUIC、WireGuard、WS/gRPC | 快照已有协议代码，逐项核对参数保真、TCP/UDP socket 保护、严格认证、真实握手/载荷及网络恢复；通过后逐项开放导入 | 待接入 Android 验收，当前仍受协议白名单限制 |
+| Reality/Vision、VMess、Hysteria2、TUIC、WireGuard、WS/gRPC | 快照已有协议代码，逐项核对参数保真、TCP/UDP socket 保护、严格认证、真实握手/载荷及网络恢复；通过后逐项开放导入 | VMess AEAD TCP code 12 候选已过完整 CI 与原签名升级，未发布；外层 TLS 正向、其它协议与传输仍待验收 |
 | 完整 Clash/sing-box、providers、覆写、脚本 | 增加独立的完整配置模型与预览/校验；provider 缓存与下载有界；JavaScript 使用 Clash 配置覆写语义，修改生成的配置，资源/执行有上限，脚本失败保留旧配置 | 待实现；明确采用 JavaScript，不改成仅声明式覆写 |
 | 更多规则、自定义代理组、规则集、按应用分流 | 自定义组图校验、规则集来源/大小校验；Android 按包/UID 适配，不把 PC 进程路径假装成 Android 程序标识；区分应用绕过 VPN 与 VPN 内按应用路由 | Beta.6/7 已发布应用包含/排除，完整 CI 通过；多组/规则集/应用指定代理仍待实现 |
 | 运行中切换与热重载 | 校验完成后原子切换，保留监听/TUN、选择与统计；失败不替换运行配置，回归旧会话及新连接 | 待实现；当前界面仍要求断开修改 |
@@ -14,7 +14,7 @@
 
 第 8 项尚未提供内容，等待补充，不自行添加需求。
 
-2026-11-22 开始下一批 VMess 接入准备：修复 AEAD 构造器静默忽略非零 alterId，建立独立 Xray/V2Fly 的真实 TCP/UDP 与错误凭据目标计数回归。88 项共享内核、39 项手机策略通过；实际互通范围及仍未通过的 V2Fly 大 UDP 报文见 [VMess 接入验收](android-vmess.md)。公开版本未交付 VMess；本地候选已开放 AEAD TCP/TLS 并通过 API 26/37 专项 TUN 与两端独立 180 秒 Doze，远端完整 CI 仍待完成；偶发 TLS 关闭保留为待定位项。
+2026-11-22 开始下一批 VMess 接入准备：修复 AEAD 构造器静默忽略非零 alterId，建立独立 Xray/V2Fly 的真实 TCP/UDP 与错误凭据目标计数回归。88 项共享内核、39 项手机策略通过；实际互通范围及仍未通过的 V2Fly 大 UDP 报文见 [VMess 接入验收](android-vmess.md)。公开版本未交付 VMess；本地候选已开放 AEAD TCP/TLS 并通过 API 26/37 专项 TUN 与两端独立 180 秒 Doze，后续 code 12 完整 CI 与原签名升级均通过；握手期间意外重建与前台服务竞态的定位、修复及仍缺失的外层 TLS 证据见上述专门记录。
 
 后续同批修正 UDP 超长报文取前缀发送、三种配置格式畸形 alterId 变 0 的问题：最新 90 项内核单元、2 项跨格式参数、39 项手机策略通过，双架构 JNI、Debug/Release APK、16 KiB 对齐和 Android 17 既有 VPN 1 项回归通过。后续本地候选手机策略增至 40 项，API 26/37 独立服务端 TUN 专项均通过；这不是公开交付。具体边界与未通过项保留在上述专门记录中。
 

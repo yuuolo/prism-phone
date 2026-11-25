@@ -2,7 +2,7 @@
 
 本地开发候选已开放 TCP/TLS VMess AEAD 导入；已公开的 Beta.9 网络恢复修复包不包含此功能。只有独立服务端互通与 Android TUN 验收同时通过才计入候选证据，不能把共享内核实现当作已发布。包名、签名及更新通道未更改；iOS 与 HarmonyOS NEXT 暂停。
 
-开发分支已合入 Beta.9 发布基线，候选 versionCode 12 / 0.2.0-beta.10，尚未发布。code 12 本地 JVM、Debug/Release、双 Lint 与 Release 16 KiB 对齐通过（`artifacts/vmess-code12-build.log`）；必须继续完成新候选 CI 和原签名升级验收，不能将较早 code 10 候选的 CI 当作本版本安装包的证明。
+开发分支已合入 Beta.9 发布基线，候选 versionCode 12 / 0.2.0-beta.10，尚未发布。修复后的提交 2b4077c 已通过完整 CI 45603456511 和原签名覆盖升级，具体范围见本文末尾；较早 code 10 或失败 CI 的产物不代替本次候选证据。
 
 ## Android 专项实测
 
@@ -77,3 +77,13 @@ CI 45600493463 的 Android 8 在 GeoDataTest 中发生 `Context.startForegroundS
 服务失败分支原先先发布可重试状态、再无条件 stopSelf，可能将排队的新前台启动一并停止。现先按已送达的 latestStartId 执行 stopSelfResult，再发布失败；断开完成同样先停止再发布完成状态。重复 CONNECT 也先履行 startForeground 义务再返回，不额外启动内核或改变证书策略。
 
 GeoDataTest 增强为连续三次损坏数据启动失败后立即恢复连接，不增加失败后等待或重试宽限。本地 Android 8 通过（`artifacts/foreground-retry-api26.log`，18.422 秒），包含每次新会话及恢复失败计数清零检查。完整 code 12 CI 和原签名覆盖升级仍待修复后的提交另行通过；没有发布。
+
+## code 12 完整软件验收回执（未发布）
+
+[CI 45603456511](https://github.com/yuuolo/prism-phone/actions/runs/45603456511)，源码 2b4077c，全部成功：双架构 JNI、Debug/Release、双 Lint、8 项 JVM、手机 Rust、Linux 内核与独立 Xray/V2Fly 互通、Release 权限检查，以及 Android 8 和 Android 17/16 KiB 各 26 项完整回归。每端基础链及 VMess 链各执行独立 180 秒 Doze，共四份报告；强制 IDLE、PID/VPN 身份、冷 DNS/fake-IP、严格 TLS/HTTP 200、断开不复活与断开对照均回读通过。原始日志及校验结果位于 `artifacts/android-candidate-45603456511/ci.log`、`ci-proof.json`。
+
+精确 CI ZIP 摘要 `c8edbd619a2bde74ba78e096fe8ceb9ffecf8c5b793b399dd754670438a4191d` 校验通过，再以原证书本地签名并核对 16 KiB 对齐。候选 APK 为 24,381,035 字节，SHA-256 `eac51a87d3d9b74d9582db8a0c16798392ae7435553d856e203a55da7ff559c5`。仅用于本地验收，不是公开下载包。
+
+保留 Beta.2 历史的原签名样本通过应用更新按钮、系统 Only this time/Update 从 Beta.9 code 11 覆盖到 code 12。UID 10230、Keystore 解密、原节点/凭据/来源/收藏/选择和规则验证通过；全部 prism-mobile 偏好升级前后相同。设置页实际选中 Ask every time，未授予 Always allow。证据为同目录 `upgrade-proof.json`、`verify.log` 与 `source-settings.xml`。此次使用校验缓存，不计作线上下载验收；关闭模拟器时保留全部数据，另一个旧版原签名样本未改动。
+
+这些证据完成基础 VMess AEAD TCP 候选及本批恢复修复的软件验收，不代表全部高级协议或稳定版完成。外层 VMess TLS 的有效服务端正向端到端仍缺专门证据；WS/gRPC 等传输、其余高级协议与功能继续开发。真机、真实账号、长时耗电和物理无线切换条件仍缺失。没有上传 Release、标签或更新清单，公开版本仍为 Beta.9。
