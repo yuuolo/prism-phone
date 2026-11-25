@@ -302,7 +302,16 @@ pub fn gun_message(data: &[u8]) -> Vec<u8> {
 pub fn gun_take(buf: &mut BytesMut) -> io::Result<Vec<Bytes>> {
     let mut out = Vec::new();
     while buf.len() >= 5 {
+        // This transport does not negotiate grpc-encoding. Reject compressed
+        // messages instead of interpreting their bytes as an uncompressed Hunk.
+        if buf[0] != 0 {
+            return Err(invalid("gRPC: unsupported compression flag"));
+        }
         let len = u32::from_be_bytes([buf[1], buf[2], buf[3], buf[4]]) as usize;
+        // Bound accumulation before waiting for a declared message body.
+        if len > 4 * 1024 * 1024 {
+            return Err(invalid("gRPC: message too large"));
+        }
         if buf.len() < 5 + len {
             break;
         }
@@ -314,16 +323,24 @@ pub fn gun_take(buf: &mut BytesMut) -> io::Result<Vec<Bytes>> {
         }
         msg.advance(1);
         let (mut n, mut shift, mut used) = (0usize, 0, 0);
+        let mut terminated = false;
         for b in msg.iter() {
+            if shift == 28 && b & 0xf0 != 0 {
+                return Err(invalid("gRPC: bad length"));
+            }
             n |= ((b & 0x7f) as usize) << shift;
             used += 1;
             if b & 0x80 == 0 {
+                terminated = true;
                 break;
             }
             shift += 7;
             if shift > 28 {
                 return Err(invalid("gRPC: bad length"));
             }
+        }
+        if !terminated {
+            return Err(invalid("gRPC: incomplete length"));
         }
         msg.advance(used);
         if msg.len() < n {
@@ -389,6 +406,9 @@ async fn grpc(s: BoxedStream, service: &str, authority: &str) -> io::Result<Boxe
                 for d in gun_take(&mut buf)? {
                     lwr.write_all(&d).await?;
                 }
+            }
+            if !buf.is_empty() {
+                return Err(invalid("gRPC: truncated message"));
             }
             if let Ok(Some(t)) = body.trailers().await {
                 if let Some(code) = t.get("grpc-status").filter(|c| c.as_bytes() != b"0") {
