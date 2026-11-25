@@ -35,6 +35,10 @@ impl Reality {
         use base64::Engine;
         let pk = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(public_key.trim().trim_end_matches('=')).ok()?;
         let public_key: [u8; 32] = pk.try_into().ok()?;
+        // Public-key validation only; this fixed scalar is never an auth key.
+        let check = x25519_dalek::StaticSecret::from([1u8; 32])
+            .diffie_hellman(&x25519_dalek::PublicKey::from(public_key));
+        if !check.was_contributory() { return None; }
         let sid = short_id.trim();
         if sid.len() > 16 || sid.len() % 2 != 0 {
             return None;
@@ -741,6 +745,12 @@ mod tests {
 
     #[test]
     fn reality_keys_parse() {
+        use base64::Engine;
+        let mut one = [0u8;32]; one[0] = 1;
+        for low in [[0u8;32],one] {
+            let key = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(low);
+            assert!(Reality::parse(&key, "").is_none());
+        }
         let r = Reality::parse("Z84J2IelR9ch3k8VtlVhhs5ycBUlXA7wHBWcBrjqnAw", "6ba85179e30d4fc2").unwrap();
         assert_eq!(r.short_id, [0x6b, 0xa8, 0x51, 0x79, 0xe3, 0x0d, 0x4f, 0xc2]);
         assert_eq!(Reality::parse("Z84J2IelR9ch3k8VtlVhhs5ycBUlXA7wHBWcBrjqnAw", "ab").unwrap().short_id, [0xab, 0, 0, 0, 0, 0, 0, 0]);

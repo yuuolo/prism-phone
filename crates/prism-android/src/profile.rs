@@ -32,7 +32,21 @@ pub struct Session {
     pub dns: Option<crate::dns::Config>,
 }
 
+fn reality_candidate(node: &ProxyConfig) -> bool {
+    node.kind() == ProxyKind::Vless && node.tls && node.reality_public_key.is_some()
+        && matches!(node.network.as_deref(), None | Some("") | Some("tcp"))
+        && matches!(node.flow.as_deref(), None | Some("xtls-rprx-vision"))
+        && matches!(node.fingerprint.as_deref(), None | Some("chrome"))
+        && node.sni.as_ref().is_some_and(|name| {
+            name.len() <= 253 && !name.is_empty() && name.parse::<std::net::IpAddr>().is_err()
+                && name.split('.').all(|label| !label.is_empty() && label.len() <= 63
+                    && !label.starts_with('-') && !label.ends_with('-')
+                    && label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'))
+        })
+}
+
 pub(crate) fn supported(node: &ProxyConfig) -> bool {
+    let reality = reality_candidate(node);
     matches!(
         node.kind(),
         ProxyKind::AnyTls
@@ -50,13 +64,12 @@ pub(crate) fn supported(node: &ProxyConfig) -> bool {
             || (node.kind() == ProxyKind::Vmess && node.network.as_deref() == Some("grpc")
                 && node.grpc_service.as_ref().is_none_or(|v| v.len() <= 255
                     && v.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.'))))
-        && node.fingerprint.is_none()
-        && node.reality_public_key.is_none()
-        && node.flow.is_none()
+        && (reality || (node.fingerprint.is_none() && node.reality_public_key.is_none()
+            && node.reality_short_id.is_none() && node.flow.is_none()))
         && !node.skip_cert_verify
         && !node.server.is_empty()
         && node.port != 0
-        && (node.kind() != ProxyKind::Vmess
+        && (!(node.kind() == ProxyKind::Vmess || reality)
             || prism_core::outbound::build_proxy(node, prism_core::outbound::Dialer::Direct)
                 .is_ok())
 }
@@ -80,7 +93,7 @@ pub fn import(raw: &str) -> Result<Import> {
             keep
         })
         .collect::<Vec<_>>();
-    ensure!(!nodes.is_empty(), "没有支持的节点：基础 TCP/TLS AnyTLS、SS、Trojan、VLESS、SOCKS5、HTTP，或 VMess AEAD（TCP/WS/gRPC），且须校验证书");
+    ensure!(!nodes.is_empty(), "没有支持的节点：基础 TCP/TLS AnyTLS、SS、Trojan、VLESS、SOCKS5、HTTP，VMess AEAD（TCP/WS/gRPC）或 VLESS Reality（TCP/Vision），且须严格认证");
     Ok(Import { nodes, skipped })
 }
 pub fn build(s: Session) -> Result<(Profile, String)> {

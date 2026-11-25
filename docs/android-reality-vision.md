@@ -1,6 +1,6 @@
-# Reality/Vision 独立接入准备（手机未开放）
+# Reality/Vision 手机开发候选（未发布）
 
-公开版本仍为 Beta.9，手机白名单仍拒绝 Reality、Vision 和指纹配置。开发分支增加独立互通、Vision 修正与导入边界校验，不将内核已有代码或本地测试当作 Android 已交付。gRPC code14 的修正 CI 45683589159 固定为 d5388b3，不包含本批 Reality 测试。
+公开版本仍为 Beta.9，不包含 Reality/Vision。当前开发候选为 code15 / 0.2.0-beta.10，开始受限手机接入，尚未取得本轮 Android 流量验收。开发分支增加独立互通、Vision 修正与导入边界校验，不将内核已有代码或本地测试当作 Android 已交付。gRPC code14 的修正 CI 45683589159 固定为 d5388b3，不包含本批 Reality 测试。
 
 按照 [REALITY 官方示例](https://github.com/XTLS/REALITY/blob/main/README.en.md) 配置公钥/短 ID、服务名和可选 `xtls-rprx-vision`，使用已有官方摘要校验的 Xray 26.11.9。服务端、TLS 1.3 伪装目标、TCP/UDP 回显均绑定 127.0.0.1；代理路由只允许本次回显端口，其余拒绝，无公网伪装目标或任意转发。
 
@@ -24,7 +24,7 @@
 
 同一增强测试现已通过，两个方向均观测到直接拷贝，切换后的追加 TLS 载荷也逐字节通过；512,000 字节、原 TCP/UDP 及错误公钥/短 ID/UUID 保留，并新增错误 SNI 的及时拒绝（`artifacts/reality-record-boundary-final.log`）。93 项 Windows 内核单元、4 项 gRPC 帧及 5 项 VMess 参数回归通过；新增三项覆盖 1/37/8155/8192 分片、跨 write 头、正文伪头及畸形输入（`vision-record-boundary-core.log`）。没有放宽双向事件、认证或后续数据断言。
 
-CI 独立互通脚本已增加使用固定 Xray 的 Reality/Vision 测试，尚待 Linux 执行；运行中的 gRPC CI d5388b3 不包含本次修正。更多参数、手机导入/会话、受保护 socket、实际 TUN/DNS/链式/优选/恢复、双系统后台、原签名升级与真实设备仍缺证据，手机入口继续关闭。iOS 与 HarmonyOS NEXT 暂停；没有发布新版本。
+CI 独立互通脚本已增加使用固定 Xray 的 Reality/Vision 测试，尚待 Linux 执行；已完成的 gRPC CI d5388b3 不包含本次修正。更多参数、手机导入/会话、受保护 socket、实际 TUN/DNS/链式/优选/恢复、双系统后台、原签名升级与真实设备仍缺证据，公开包继续不支持该功能。iOS 与 HarmonyOS NEXT 暂停；没有发布新版本。
 
 
 ## 导入参数与拒绝降级
@@ -42,4 +42,13 @@ CI 独立互通脚本已增加使用固定 Xray 的 Reality/Vision 测试，尚�
 
 现于 HKDF/会话认证封装前调用已锁定 x25519-dalek 2.0.1 的 [was_contributory](https://docs.rs/x25519-dalek/2.0.1/x25519_dalek/struct.SharedSecret.html#method.was_contributory) 常量时间检查，无效点立即返回固定错误。正常临时密钥的正向保留，另用真实异步内存连接确认错误点产生 EOF、收到精确错误且未发出 ClientHello（`artifacts/reality-low-order-after.log`）。公钥编码/长度仍由出站构造器校验，点贡献检查在真实握手派生前完成，未把格式可解析冒称为连接可用。
 
-修正后独立 Xray 的 Reality/可选 Vision、双向直接拷贝、切换后追加 TLS 数据、512,000 字节载荷及错误认证重新通过（`artifacts/reality-low-order-interop.log`）；95 项内核单元、4 项 Reality 参数、4 项 gRPC 帧和 5 项 VMess 参数通过（`reality-low-order-core.log`）。手机仍关闭，Linux/Android 尚待，不属于固定 d5388b3 的 gRPC 候选。
+修正后独立 Xray 的 Reality/可选 Vision、双向直接拷贝、切换后追加 TLS 数据、512,000 字节载荷及错误认证重新通过（`artifacts/reality-low-order-interop.log`）；95 项内核单元、4 项 Reality 参数、4 项 gRPC 帧和 5 项 VMess 参数通过（`reality-low-order-core.log`）。该阶段手机尚未接入，Linux/Android 尚待，不属于固定 d5388b3 的 gRPC 候选。
+
+
+## code15 手机策略与夹具准备
+
+仅允许 VLESS + Reality 的 TCP，可选 xtls-rprx-vision；指纹仅缺省或 chrome，要求显式 TLS、可用公钥、合法短 ID/UUID、ASCII DNS 形式 SNI，拒绝 IP、控制字符、空标签/过长标签。其它协议的 Reality、WS/gRPC Reality、其它 flow/指纹、Vision 普通 TLS 仍未开放；证书跳过与依赖节点仍拒绝。出站构造必须通过，不接受孤立短 ID；Reality::parse 另以固定公开校验标量提前拒绝低阶点，实际握手仍保留独立检查，不将校验标量用作认证密钥。
+
+40 项手机策略、Reality 三格式导入→会话生成 2 项、原 gRPC 2 项及 WS 1 项通过（`artifacts/reality-mobile-policy.log`）。覆盖公钥/短 ID/SNI/指纹/flow 保留和非法组合拒绝；95 项内核单元、4 项 Reality 参数、4 项 gRPC 帧、5 项 VMess 参数与独立 Xray 强验收重新通过（`reality-candidate15-core.log`、`reality-candidate15-interop.log`）。双架构 JNI 已启动构建，尚未打包或取得 Android TUN/后台/原签名验收，不能把上述策略测试当成功能交付。
+
+宿主示例 `reality_fixture_cert` 只为新目录生成伪装 TLS 服务端的临时证书/密钥，拒绝覆盖文件，不进入 JNI/APK、不修改客户端信任；PEM 已由 Python TLS1.3 上下文成功加载（`artifacts/reality-camouflage-cert-build.log`）。它只准备伪装服务端，尚需独立 Xray 手机夹具和实际流量验证。gRPC code14 原签名样本仍保留 code14 与原 UID/配置，未安装 code15；旧原签名样本不变。
