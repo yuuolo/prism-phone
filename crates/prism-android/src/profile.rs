@@ -46,7 +46,10 @@ pub(crate) fn supported(node: &ProxyConfig) -> bool {
         && (matches!(node.network.as_deref(), None | Some("") | Some("tcp"))
             || (node.kind() == ProxyKind::Vmess && node.network.as_deref() == Some("ws")
                 && node.ws_path.as_ref().is_none_or(|v| v.len() <= 2048 && v.bytes().all(|b| (33..=126).contains(&b)))
-                && node.ws_host.as_ref().is_none_or(|v| !v.is_empty() && v.len() <= 255 && v.bytes().all(|b| (33..=126).contains(&b)))))
+                && node.ws_host.as_ref().is_none_or(|v| !v.is_empty() && v.len() <= 255 && v.bytes().all(|b| (33..=126).contains(&b))))
+            || (node.kind() == ProxyKind::Vmess && node.network.as_deref() == Some("grpc")
+                && node.grpc_service.as_ref().is_none_or(|v| v.len() <= 255
+                    && v.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.'))))
         && node.fingerprint.is_none()
         && node.reality_public_key.is_none()
         && node.flow.is_none()
@@ -77,7 +80,7 @@ pub fn import(raw: &str) -> Result<Import> {
             keep
         })
         .collect::<Vec<_>>();
-    ensure!(!nodes.is_empty(), "没有支持的节点：基础 TCP/TLS AnyTLS、SS、Trojan、VLESS、VMess AEAD、SOCKS5、HTTP，且须校验证书");
+    ensure!(!nodes.is_empty(), "没有支持的节点：基础 TCP/TLS AnyTLS、SS、Trojan、VLESS、SOCKS5、HTTP，或 VMess AEAD（TCP/WS/gRPC），且须校验证书");
     Ok(Import { nodes, skipped })
 }
 pub fn build(s: Session) -> Result<(Profile, String)> {
@@ -215,6 +218,8 @@ mod tests {
             assert!(!supported(&invalid));
             invalid.ws_path = None;
             invalid.network = Some("grpc".into());
+            assert!(supported(&invalid));
+            invalid.grpc_service = Some("bad/service".into());
             assert!(!supported(&invalid));
             invalid = n;
             invalid.skip_cert_verify = true;
