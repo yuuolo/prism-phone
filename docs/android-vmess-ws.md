@@ -29,8 +29,12 @@ API 37 首次后台验收在 ui-connect 阶段找不到按钮，未进入 IDLE�
 
 2026-11-26 核对上述 CI：两端均完成 26 项应用测试，随后在 TCP→WS 夹具切换阶段退出；API 26 保存的 WS 夹具日志明确为前置 SOCKS 端口 19097 的 `EADDRINUSE`，WS 专项未运行。修正仅对非 Windows 的回环 TCP 监听启用 `SO_REUSEADDR`，允许旧连接关闭后立即顺序重绑；不启用 `SO_REUSEPORT`，也不允许替换仍活动的监听。新增活动监听不可替换与真实连接主动关闭后立即重绑两项回归，后者须在 Linux CI 执行；Windows 本地跳过该项。较早下载的 code 13 APK 因 CI 失败保持 unsigned、不可升级，须使用修正后完整 CI 的新产物重新验收。
 
-code 13 的新完整远端 CI、最终候选原签名升级仍须验收。后台工具已增加独立 WS 种子标记与 mode，CI 会先完成 TCP，再切换独立 WS 服务端，重新安装标准 runner 后执行 WS 前台与后台测试。不能用较早 TCP 的 CI、原签名升级或后台报告代替 WS 结果。
+code 13 的新完整远端 CI 与最终候选原签名升级均已通过，仍未发布。后台工具使用独立 WS 种子标记与 mode，CI 先完成 TCP，再切换独立 WS 服务端，重新安装标准 runner 后执行 WS 前台与后台测试。不能用较早 TCP 的 CI、原签名升级或后台报告代替 WS 结果。
 
-修正后的 CI 45675078331 固定为 5af7d34；构建作业 139420335478 已通过，其中 8 项 Python 测试全部执行通过，包含 Linux 主动关闭连接后的立即重绑。两端模拟器尚在验收。已下载的新归档 SHA-256 为 `4f6fc88e68ebf0dd438a15cb7f24c469b839b00133c74016ef4055fc996b5f2a`，官方摘要一致，code 13 / 最低 API 26 / 16 KiB 对齐核对通过；完整 CI 未通过前仍不可签名升级或发布。后续 gRPC 修正与专项工具提交不属于该固定源码的候选。
+修正后的 [CI 45675078331](https://github.com/yuuolo/prism-phone/actions/runs/45675078331) 固定为 5af7d34，构建及两个模拟器作业均成功。其中 8 项 Python 测试全部执行通过，包含 Linux 主动关闭连接后的立即重绑；两端各 26 项完整回归及 1 项 WS 专项，共 54 项。两份官方摘要核验后的模拟器归档内，六份独立后台报告均检查了 180 秒强制 IDLE、同一进程/VPN、三阶段冷 fake-IP DNS、严格 TLS/HTTP 200、用户断开不复活及断开对照拒绝；WS 前台分别覆盖三种与五种 cipher。回执为 `artifacts/android-candidate-45675078331/ci-proof.json`。
+
+新未签名归档 SHA-256 为 `4f6fc88e68ebf0dd438a15cb7f24c469b839b00133c74016ef4055fc996b5f2a`，官方摘要一致，code 13 / 最低 API 26 / 16 KiB 对齐核对通过。随后才使用原证书本机签名私有验收包，大小 24,352,363 字节，APK SHA-256 为 `81c6b3da86de207143e9fea65739fa9ff934be827ea585af5ac8fee8338cc7ce`。后续 gRPC 修正与专项工具提交不属于该固定源码的候选。
+
+原签名 PrismInstallerCI 样本从 code 12 经正常应用缓存安装按钮、系统 Only this time 和 Update 覆盖至 13；先验证旧样本，再安装隔离源码构建的助手，未清除或卸载主应用。升级后 helper 为 passed-verify，原 Beta.2 延续的节点、凭据、来源、收藏、选择与规则保持，UID 仍为 10230，Keystore 可正常解密；`prism-mobile` 全部一项加密偏好条目的 OuterXml 完全一致。拉取系统实际安装 APK 的摘要与上述候选一致，来源设置选中的仍为 Ask every time，安装来源 app-op 为 deny。回执 `artifacts/android-candidate-45675078331/upgrade-proof.json`，验收后关闭模拟器并保留数据。缓存安装不算本次线上下载证据，未修改公开版本、Release、tag 或更新通道。
 
 真实设备、实际节点账号与物理无线/长时耗电条件仍缺失。全部外部服务端仅用于回环夹具，不随 APK 分发。此候选尚未发布，完整版目标继续保持未完成。

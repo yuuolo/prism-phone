@@ -2,7 +2,13 @@
 
 WS code 13 的完整 CI 运行期间，继续接入下一项 gRPC。当前工作区 code 14 / 0.2.0-beta.10 开发候选仅允许 VMess AEAD 的基础 gRPC；服务名接受缺省/空值或最多 255 字节的 ASCII 字母、数字、下划线、点，拒绝路径覆盖、空白和控制字符。其它协议 gRPC、Reality/Vision、证书跳过等限制不变。本文件不是 Android 功能已交付或已发布的声明。旧 WS CI 因夹具端口重绑失败，修正后的 CI 45675078331 固定使用提交 5af7d34，不包含后续接收边界修正和手机 gRPC。
 
-code 14 的手机 Rust 40 项、gRPC 导入/会话生成 2 项、WS 回归 1 项本地通过（`artifacts/vmess-grpc-mobile-policy.log`），覆盖 Clash/sing-box 的自定义和缺省服务名、长度边界、非法名称及其他协议拒绝。双架构 JNI 正在构建；手机 TUN、链式、DNS、优选、重建、后台及完整 CI 尚未取得本轮证据，不能用下面的核心互通代替。
+code 14 的手机 Rust 40 项、gRPC 导入/会话生成 2 项、WS 回归 1 项本地通过（`artifacts/vmess-grpc-mobile-policy.log`），覆盖 Clash/sing-box 的自定义和缺省服务名、长度边界、非法名称及其他协议拒绝。双架构 JNI、8 项 JVM、Debug/Release、双 Lint 与 16 KiB 对齐通过（`artifacts/vmess-grpc-native.log`、`vmess-grpc-android-build.log`）；APK 内 x86_64 JNI 与本轮 strip 后摘要一致：`a01de7b6aab1e8d7ee2396f33861712a2bcce6d760dfe6a58efdec740668344b`。
+
+API 26 / Xray 的 gRPC 三种 AEAD 配置通过实际 TUN、严格 TLS、1200 字节 UDP、代理 DNS、SOCKS→VMess gRPC 链式、同会话重建、本机代理、实际 url-test 及错误 UUID 拒绝；日志 `artifacts/vmess-grpc-api26.log` 为 1 项通过 / 16.314 秒，`vmess-grpc-api26-evidence.json` 为 complete=true、transport=grpc。首次覆盖调试包因旧调试证书不一致被系统拒绝；确认专用 AVD、DEBUGGABLE 及旧证书非原发布证书后才重置该一次性调试安装。被拒安装未运行测试，不计为升级证据；两个原签名样本未重置。
+
+API 26 独立 gRPC 双跳后台验收同样通过（`artifacts/vmess-grpc-background-api26.json`）：普通应用 UI 启动、种子退出后强制 IDLE 180 秒，PID 5185 与 VPN 108/tun0 不变，三阶段冷 fake-IP DNS、严格 TLS/HTTP 200，断开不复活及断开对照拒绝。没有保活请求或模拟器系统界面干预；验收后关闭该调试实例及核实身份的夹具，保留两份原签名样本。
+
+API 37 前台/后台、完整 CI 与本轮原签名升级仍待完成，不能用核心互通或 API 26 结果代替。
 
 按 [V2Fly gRPC 配置](https://www.v2fly.org/config/transport/grpc.html) 核对 serviceName 和 Tun 路由。独立测试同时覆盖显式服务名 PrismVmessInterop，以及双方均不设置服务名的缺省配置；使用实际 Go 服务端结果，没有更改运行中的协议实现来满足测试。
 
