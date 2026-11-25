@@ -233,6 +233,9 @@ fn record(ty: u8, version: u16, body: &[u8]) -> Vec<u8> {
 fn reality_session_id(r: &Reality, x25519: &x25519_dalek::StaticSecret, random: &[u8; 32], hello: &[u8]) -> io::Result<(Vec<u8>, [u8; 32])> {
     use aes_gcm::aead::{Aead, KeyInit, Payload};
     let shared = x25519.diffie_hellman(&x25519_dalek::PublicKey::from(r.public_key));
+    if !shared.was_contributory() {
+        return Err(invalid("non-contributory REALITY key"));
+    }
     let mut auth = [0u8; 32];
     hkdf::Hkdf::<sha2::Sha256>::new(Some(&random[..20]), shared.as_bytes())
         .expand(b"REALITY", &mut auth)
@@ -708,6 +711,33 @@ impl<S: AsyncRead + AsyncWrite + Unpin> AsyncWrite for TlsStream<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reality_low_order_keys_are_rejected_before_authentication_sealing() {
+        let secret = x25519_dalek::StaticSecret::from([7u8;32]);
+        let mut one = [0u8;32]; one[0] = 1;
+        for public_key in [[0u8;32], one] {
+            let reality = Reality { public_key, short_id:[0;8] };
+            assert!(reality_session_id(&reality, &secret, &[3;32], b"test hello").is_err());
+        }
+        let public_key = *x25519_dalek::PublicKey::from(&x25519_dalek::StaticSecret::from([9u8;32])).as_bytes();
+        let reality = Reality { public_key, short_id:[0;8] };
+        assert!(reality_session_id(&reality, &secret, &[3;32], b"test hello").is_ok());
+    }
+
+    #[tokio::test]
+    async fn reality_low_order_key_emits_no_client_hello() {
+        let (client, mut peer) = tokio::io::duplex(65536);
+        let cfg = Config { server_name:"reality.fixture.test".into(), alpn:vec!["h2".into()],
+            skip_verify:false, reality:Some(Reality { public_key:[0;32], short_id:[0;8] }) };
+        let task = tokio::spawn(async move { connect(client, &cfg).await.map(|_| ()) });
+        let mut byte = [0];
+        let n = tokio::time::timeout(std::time::Duration::from_secs(2), peer.read(&mut byte)).await.unwrap().unwrap();
+        if n != 0 { task.abort(); }
+        assert_eq!(n, 0, "invalid REALITY key must not emit authentication material");
+        let error = tokio::time::timeout(std::time::Duration::from_secs(2), task).await.unwrap().unwrap().unwrap_err();
+        assert!(error.to_string().contains("non-contributory REALITY key"));
+    }
 
     #[test]
     fn reality_keys_parse() {

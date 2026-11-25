@@ -34,3 +34,12 @@ CI 独立互通脚本已增加使用固定 Xray 的 Reality/Vision 测试，尚�
 新测试先复现两种静默降级：显式 Reality 缺少公钥仍导入普通 TLS，未知 VLESS URI security 被当成 none（`artifacts/reality-parameters-before.log`）。现修正三条导入路径，缺失、null、空白或非字符串公钥拒绝导入，不猜测普通 TLS；VLESS URI 仅接受 none/tls/reality，未知值拒绝而非转明文。sing-box 显式 enabled=false 则不启用 Reality，清除公钥/短 ID；Clash 的 null 可选块仍按未配置处理，普通 TLS 保持。
 
 四项参数回归、93 项内核单元、4 项 gRPC 帧及 5 项 VMess 参数通过（`artifacts/reality-parameter-regression.log`）。合法公钥的密码学格式仍由出站构造器验证。本次为新导入路径修正，不冒称能从缺少原始安全意图的旧节点反推并修复旧缓存。尚未开放手机 Reality/Vision，固定 gRPC CI d5388b3 不包含本批解析修正。
+
+
+## 认证派生前的低阶点拒绝
+
+进一步检查发现 Reality 静态公钥 ECDH 缺少普通 TLS 分支已有的 non-contributory 检查。新增零点和低阶点 1 的测试先失败（`artifacts/reality-low-order-before.log`），说明旧路径仍会尝试派生认证密钥；这不是已有用户遭受攻击的证据。
+
+现于 HKDF/会话认证封装前调用已锁定 x25519-dalek 2.0.1 的 [was_contributory](https://docs.rs/x25519-dalek/2.0.1/x25519_dalek/struct.SharedSecret.html#method.was_contributory) 常量时间检查，无效点立即返回固定错误。正常临时密钥的正向保留，另用真实异步内存连接确认错误点产生 EOF、收到精确错误且未发出 ClientHello（`artifacts/reality-low-order-after.log`）。公钥编码/长度仍由出站构造器校验，点贡献检查在真实握手派生前完成，未把格式可解析冒称为连接可用。
+
+修正后独立 Xray 的 Reality/可选 Vision、双向直接拷贝、切换后追加 TLS 数据、512,000 字节载荷及错误认证重新通过（`artifacts/reality-low-order-interop.log`）；95 项内核单元、4 项 Reality 参数、4 项 gRPC 帧和 5 项 VMess 参数通过（`reality-low-order-core.log`）。手机仍关闭，Linux/Android 尚待，不属于固定 d5388b3 的 gRPC 候选。
