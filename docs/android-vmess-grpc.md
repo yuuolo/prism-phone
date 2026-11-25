@@ -10,9 +10,11 @@ API 26 独立 gRPC 双跳后台验收同样通过（`artifacts/vmess-grpc-backgr
 
 API 37 / 实测 16384 字节页、V2Fly 的首次专项在首个 TLS 握手超时，networkRebuilds 为 0→0，complete=false、phases 为空；记录 `artifacts/vmess-grpc-api37-initial-failure.log`、`initial-logcat.txt`、`initial-server.log`、`initial-evidence.json` 均保留。固定转发夹具记录首条连接 up=530/down=4090 后客户端关闭，但这些计数不能确定超时原因。之后同一夹具的严格证书 TLS 主机对照两次成功（`vmess-grpc-api37-relay-control.log`），不证明先前公网链路一定正常。
 
-在未改源码、未增内部重试、未放宽 TLS 的独立复核中，五种配置及链式、重建、本机代理、优选、错误 UUID 拒绝全部通过：`vmess-grpc-api37-recheck.log` 为 1 项 / 35.201 秒；`vmess-grpc-api37-recheck-evidence.json` 为 complete=true、transport=grpc。首次超时根因仍未确认，不宣称已修复。API 37 后台正在运行；完整 CI 与本轮原签名升级仍待完成。
+在未改源码、未增内部重试、未放宽 TLS 的独立复核中，五种配置及链式、重建、本机代理、优选、错误 UUID 拒绝全部通过：`vmess-grpc-api37-recheck.log` 为 1 项 / 35.201 秒；`vmess-grpc-api37-recheck-evidence.json` 为 complete=true、transport=grpc。首次超时根因仍未确认，不宣称已修复。
 
-完整模拟器脚本已安排 TCP→WS→gRPC 顺序切换，每种新增传输单独前台专项、回执及 180 秒后台报告；预期两端共 56 项测试、8 份后台报告。新增实际页大小回执及 API 37 的 16384 校验；目前仅通过 shell 语法检查，尚未执行本轮远端 CI。
+API 37 独立 gRPC 双跳后台也通过（`artifacts/vmess-grpc-background-api37.json`）：180 秒强制 IDLE，PID 7400、VPN 111/tun0 不变，三阶段冷 fake-IP DNS、严格 TLS/HTTP 200、断开不复活及断开对照拒绝逐项核对通过。该轮未干预系统界面，没有应用保活；结束后恢复标准 runner 并关闭调试实例及核实身份的夹具。该结果不消除上述首次 TLS 失败，也不代表真机长时稳定性。
+
+完整模拟器脚本安排 TCP→WS→gRPC 顺序切换，每种新增传输单独前台专项、回执及 180 秒后台报告；预期两端共 56 项测试、8 份后台报告。新增实际页大小回执及 API 37 的 16384 校验，shell 语法检查通过。[本轮 CI 45681805383](https://github.com/yuuolo/prism-phone/actions/runs/45681805383) 固定为 4c767435beb1d14da38280c3b1e23b34ce51480d，正在运行；未重新启动。完整 CI 与 code 13→14 原签名升级尚待完成。
 
 按 [V2Fly gRPC 配置](https://www.v2fly.org/config/transport/grpc.html) 核对 serviceName 和 Tun 路由。独立测试同时覆盖显式服务名 PrismVmessInterop，以及双方均不设置服务名的缺省配置；使用实际 Go 服务端结果，没有更改运行中的协议实现来满足测试。
 
