@@ -187,12 +187,15 @@ class PrismVpnService : VpnService() {
         manager.allNetworks.forEach {network ->manager.getNetworkCapabilities(network)?.takeIf{it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN)}?.let {c->
             state.seed(network,capabilities(c),manager.getLinkProperties(network)?.let{links(it)})
         }}
-        fun changed() {if(!destroyed && visibleService===this && activeCoreTicket==ticket && generation.get()==ticket && stage=="已连接")runCatching{CoreBridge.networkChanged()}}
+        fun changed(reason:String) {if(!destroyed && visibleService===this && activeCoreTicket==ticket && generation.get()==ticket && stage=="已连接") {
+            if(BuildConfig.DEBUG) android.util.Log.d("PrismNetwork",reason)
+            runCatching{CoreBridge.networkChanged()}
+        }}
         val next = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {if(state.available(network))changed()}
-            override fun onLost(network: Network) {if(state.lost(network))changed()}
-            override fun onCapabilitiesChanged(network:Network,c:NetworkCapabilities) {if(state.capabilities(network,capabilities(c)))changed()}
-            override fun onLinkPropertiesChanged(network:Network,p:LinkProperties) {if(state.links(network,links(p)))changed()}
+            override fun onAvailable(network: Network) {if(state.available(network))changed("available")}
+            override fun onLost(network: Network) {if(state.lost(network))changed("lost")}
+            override fun onCapabilitiesChanged(network:Network,c:NetworkCapabilities) {if(state.capabilities(network,capabilities(c)))changed("capabilities")}
+            override fun onLinkPropertiesChanged(network:Network,p:LinkProperties) {if(state.links(network,links(p)))changed("links")}
         }
         callback = next
         manager.registerNetworkCallback(NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(), next,main)
@@ -200,7 +203,7 @@ class PrismVpnService : VpnService() {
             override fun onCapabilitiesChanged(network:Network,c:NetworkCapabilities) {
                 // A VPN keeps its Network identity while its OS-chosen physical
                 // default changes. Ignore VPN validation feedback to avoid loops.
-                if(c.hasTransport(NetworkCapabilities.TRANSPORT_VPN) && state.defaultTransport(transports(c)))changed()
+                if(c.hasTransport(NetworkCapabilities.TRANSPORT_VPN) && state.defaultTransport(transports(c)))changed("vpn-transports")
             }
         }
         defaultCallback=defaults;manager.registerDefaultNetworkCallback(defaults,main)

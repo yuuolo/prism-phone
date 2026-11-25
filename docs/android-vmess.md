@@ -60,4 +60,12 @@ Xray 切换 `SERVER_KIND=xray` 并使用其二进制；大报文探测设置 `PR
 
 2026-11-23 补齐 API 26 / Xray 的独立 180 秒 Doze：artifacts/vmess-background-api26.json 为 mode=vmess-chain、ok=true，PID 3978 与 VPN 102/tun0 不变，三个阶段均通过冷 DNS/fake-IP、严格 TLS 和 HTTP 200，用户断开不复活、断开对照拒绝。测试后正常关闭一次性 AVD 并清理核实过的夹具，未操作原签名升级样本。
 
-AnyTLS CI 失败已定位为测试对填充边界的错误假设：96 字节首包若随机目标为 100–103，放不下七字节头及正长度填充，应原样发送。断言现只在实测首包载荷长度一致且处于该边界时接受；没有修改协议运行行为。另补确定性 96–104 边界回归，本地 6 项 AnyTLS 线协议与该单元通过。新 CI 45115934125 的策略与独立 Xray/V2Fly 互通步骤已通过，其余构建/模拟器仍在执行；不把阶段通过当作完整 CI 通过。
+AnyTLS CI 失败已定位为测试对填充边界的错误假设：96 字节首包若随机目标为 100–103，放不下七字节头及正长度填充，应原样发送。断言现只在实测首包载荷长度一致且处于该边界时接受；没有修改协议运行行为。另补确定性 96–104 边界回归，本地 6 项 AnyTLS 线协议与该单元通过。CI 45115934125 已全部通过，包括独立 Xray/V2Fly 互通、两端各 26 项 Android 回归、每端基础链与 VMess 链各一份 180 秒 Doze。四份报告的强制 IDLE、PID/VPN、DNS/TLS/HTTP 和断开对照已回读核对，见 `artifacts/vmess-ci-45115934125-proof.json`。该 CI 源码为 2ced687，仍为较早 code 10 候选，不覆盖后续 code 12 或下述网络通知修正。
+
+## 2026-11-25：握手期间意外重建
+
+code 12 新诊断重现 TLS 关闭时 `networkRebuilds=0→1`，恢复状态为 ready，而非错误 UUID 或证书放宽。冷启动进一步捕获 DEBUG 固定原因 `available`（`artifacts/vmess-network-reason-cold-api26.log` 及对应 logcat）：已有可用链路时，新增网络的通知仍强制重建，打断正在进行的 TLS。DEBUG 日志只记录固定回调类型，不记录网络地址或 DNS；Release 不输出该日志。
+
+`NetworkChangeState.available` 现仅在此前没有已知网络时触发重建；已有链路时的新网络先记录，链路属性、实际 VPN 底层传输变化及丢失通知继续独立处理。JVM 回归先在旧行为失败（`network-available-before.log`），修正后通过，并验证全断网后首条网络仍触发恢复。没有延长 VMess 测试等待或增加 TLS 重试。
+
+相同冷启动条件下 VMess 专项通过（`vmess-network-available-cold-after-api26.log`，27.797 秒，完整分阶段 evidence 保留），真实 Wi-Fi/移动网络、完全断网与恢复专项通过（`network-available-real-switch-api26.log`，40.440 秒）。不能将这一修正解释为所有连接不稳定或所有 TLS 关闭均已解决；code 12 修正后的双系统完整 CI 与原签名升级仍须另验收，真机条件仍缺失，尚未发布。

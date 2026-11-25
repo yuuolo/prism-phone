@@ -9,7 +9,15 @@ internal class NetworkChangeState<K>(initialDefaultTransport:Int?) {
     private val known=mutableMapOf<K,Entry>()
     private var defaultTransport=initialDefaultTransport?.takeIf {it!=0}
     fun seed(key:K,capabilities:Capabilities?,links:Links?) {known[key]=Entry(capabilities,links)}
-    fun available(key:K):Boolean {if(key in known)return false;known[key]=Entry(null,null);return true}
+    fun available(key:K):Boolean {
+        if(key in known)return false
+        // Availability of an additional path does not invalidate existing
+        // sockets. Actual link/default-transport changes and loss still have
+        // their own callbacks. The first path after offline needs recovery.
+        val wasOffline=known.isEmpty()
+        known[key]=Entry(null,null)
+        return wasOffline
+    }
     fun lost(key:K)=known.remove(key)!=null
     fun capabilities(key:K,value:Capabilities):Boolean {
         val entry=known.getOrPut(key){Entry(null,null)};val previous=entry.capabilities;entry.capabilities=value

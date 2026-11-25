@@ -9,9 +9,16 @@ class NetworkChangeStateTest {
     @Test fun initialDeliveryAndDuplicateEventsDoNotRebuild() {
         val state=NetworkChangeState<String>(2);state.seed("wifi",wifi,link)
         assertFalse(state.available("wifi"));assertFalse(state.capabilities("wifi",wifi));assertFalse(state.links("wifi",link))
-        assertTrue(state.available("cell"));assertFalse(state.available("cell"))
+        // Adding a secondary path must not tear down traffic on the known path.
+        assertFalse(state.available("cell"));assertFalse(state.available("cell"))
         assertFalse(state.capabilities("cell",wifi));assertFalse(state.links("cell",link))
         assertTrue(state.lost("cell"));assertFalse(state.lost("cell"))
+    }
+    @Test fun firstNetworkAfterOfflineStillTriggersRecovery() {
+        val state=NetworkChangeState<String>(null)
+        assertTrue(state.available("wifi"));assertFalse(state.available("wifi"))
+        assertTrue(state.lost("wifi"))
+        assertTrue(state.available("cell"))
     }
     @Test fun dnsAddressValidationAndSuspensionChangesAreNotLost() {
         val state=NetworkChangeState<String>(2);state.seed("wifi",wifi,link)
