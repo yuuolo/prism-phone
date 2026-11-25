@@ -984,6 +984,14 @@ pub fn parse(v: &Value) -> Result<Profile> {
         let tls = ob.get("tls").cloned().unwrap_or(Value::Null);
         let tr = ob.get("transport").cloned().unwrap_or(Value::Null);
         let reality = tls.get("reality").cloned().unwrap_or(Value::Null);
+        let reality = if reality.get("enabled").and_then(Value::as_bool) == Some(false) {
+            Value::Null
+        } else { reality };
+        if !reality.is_null() && reality.get("public_key").and_then(Value::as_str)
+            .is_none_or(|s| s.trim().is_empty()) {
+            p.warnings.push(format!("outbound {tag}: Reality requires public_key"));
+            continue;
+        }
         p.proxies.push(ProxyConfig {
             name: tag,
             kind: Some(kind),

@@ -1,6 +1,6 @@
 # Reality/Vision 独立接入准备（手机未开放）
 
-公开版本仍为 Beta.9，手机白名单仍拒绝 Reality、Vision 和指纹配置。本轮仅增加共享内核对独立 Xray 的互通测试，不将内核已有代码或本地测试当作 Android 已交付。gRPC code14 的修正 CI 45683589159 固定为 d5388b3，不包含本批 Reality 测试。
+公开版本仍为 Beta.9，手机白名单仍拒绝 Reality、Vision 和指纹配置。开发分支增加独立互通、Vision 修正与导入边界校验，不将内核已有代码或本地测试当作 Android 已交付。gRPC code14 的修正 CI 45683589159 固定为 d5388b3，不包含本批 Reality 测试。
 
 按照 [REALITY 官方示例](https://github.com/XTLS/REALITY/blob/main/README.en.md) 配置公钥/短 ID、服务名和可选 `xtls-rprx-vision`，使用已有官方摘要校验的 Xray 26.11.9。服务端、TLS 1.3 伪装目标、TCP/UDP 回显均绑定 127.0.0.1；代理路由只允许本次回显端口，其余拒绝，无公网伪装目标或任意转发。
 
@@ -25,3 +25,12 @@
 同一增强测试现已通过，两个方向均观测到直接拷贝，切换后的追加 TLS 载荷也逐字节通过；512,000 字节、原 TCP/UDP 及错误公钥/短 ID/UUID 保留，并新增错误 SNI 的及时拒绝（`artifacts/reality-record-boundary-final.log`）。93 项 Windows 内核单元、4 项 gRPC 帧及 5 项 VMess 参数回归通过；新增三项覆盖 1/37/8155/8192 分片、跨 write 头、正文伪头及畸形输入（`vision-record-boundary-core.log`）。没有放宽双向事件、认证或后续数据断言。
 
 CI 独立互通脚本已增加使用固定 Xray 的 Reality/Vision 测试，尚待 Linux 执行；运行中的 gRPC CI d5388b3 不包含本次修正。更多参数、手机导入/会话、受保护 socket、实际 TUN/DNS/链式/优选/恢复、双系统后台、原签名升级与真实设备仍缺证据，手机入口继续关闭。iOS 与 HarmonyOS NEXT 暂停；没有发布新版本。
+
+
+## 导入参数与拒绝降级
+
+新增三格式 Reality/可选 Vision 参数回归，Clash、sing-box、分享链接均保留公钥、短 ID、SNI、指纹、flow，并能构造真实出站。按 [sing-box Reality 字段](https://sing-box.sagernet.org/configuration/shared/tls/#reality) 和 [Mihomo TLS 配置](https://wiki.metacubex.one/en/config/proxies/tls/) 校对必需公钥语义。
+
+新测试先复现两种静默降级：显式 Reality 缺少公钥仍导入普通 TLS，未知 VLESS URI security 被当成 none（`artifacts/reality-parameters-before.log`）。现修正三条导入路径，缺失、null、空白或非字符串公钥拒绝导入，不猜测普通 TLS；VLESS URI 仅接受 none/tls/reality，未知值拒绝而非转明文。sing-box 显式 enabled=false 则不启用 Reality，清除公钥/短 ID；Clash 的 null 可选块仍按未配置处理，普通 TLS 保持。
+
+四项参数回归、93 项内核单元、4 项 gRPC 帧及 5 项 VMess 参数通过（`artifacts/reality-parameter-regression.log`）。合法公钥的密码学格式仍由出站构造器验证。本次为新导入路径修正，不冒称能从缺少原始安全意图的旧节点反推并修复旧缓存。尚未开放手机 Reality/Vision，固定 gRPC CI d5388b3 不包含本批解析修正。

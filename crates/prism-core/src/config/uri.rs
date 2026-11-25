@@ -111,9 +111,13 @@ fn parse_generic(line: &str, scheme: &str) -> Result<ProxyConfig> {
         ProxyKind::Vless => {
             p.uuid = Some(user);
             let security = q.get("security").map(String::as_str).unwrap_or("none");
+            if !matches!(security, "none" | "tls" | "reality") {
+                bail!("unsupported VLESS security");
+            }
             p.tls = security == "tls" || security == "reality";
             if security == "reality" {
-                p.reality_public_key = q.get("pbk").cloned();
+                p.reality_public_key = Some(q.get("pbk").filter(|s| !s.trim().is_empty())
+                    .ok_or_else(|| anyhow!("Reality requires pbk"))?.clone());
                 p.reality_short_id = q.get("sid").cloned();
             }
             p.flow = q.get("flow").cloned().filter(|f| !f.is_empty());
