@@ -14,13 +14,13 @@ API 37 / 实测 16384 字节页、V2Fly 的首次专项在首个 TLS 握手超�
 
 API 37 独立 gRPC 双跳后台也通过（`artifacts/vmess-grpc-background-api37.json`）：180 秒强制 IDLE，PID 7400、VPN 111/tun0 不变，三阶段冷 fake-IP DNS、严格 TLS/HTTP 200、断开不复活及断开对照拒绝逐项核对通过。该轮未干预系统界面，没有应用保活；结束后恢复标准 runner 并关闭调试实例及核实身份的夹具。该结果不消除上述首次 TLS 失败，也不代表真机长时稳定性。
 
-首次失败之后，测试工具另补充固定阶段标签（TCP/代理握手、TLS、HTTP）及失败前后匿名重建/包数/流量/连接数，未记录载荷、凭据或任意目的地，未改变时限、重试与 TLS 判定。该诊断编译通过（`artifacts/vmess-probe-diagnostic-compile.log`），仅供后续失败定位；不包含在下面固定 4c76743 的 CI 中，也不能据此解释首次失败。该 CI 固定源码的 code14 原签名升级助手已单独编译通过，尚未签名或安装候选。
+首次失败之后，测试工具另补充固定阶段标签（TCP/代理握手、TLS、HTTP）及失败前后匿名重建/包数/流量/连接数，未记录载荷、凭据或任意目的地，未改变时限、重试与 TLS 判定。该诊断编译通过（`artifacts/vmess-probe-diagnostic-compile.log`），仅供后续失败定位；不包含在下面固定 4c76743 的 CI 中，也不能据此解释首次失败。该 CI 固定源码的 code14 原签名升级助手已单独构建；后续完整原签名验证见下方回执。
 
 完整模拟器脚本安排 TCP→WS→gRPC 顺序切换，每种新增传输单独前台专项、回执及 180 秒后台报告；预期两端共 56 项测试、8 份后台报告。[CI 45681805383](https://github.com/yuuolo/prism-phone/actions/runs/45681805383) 固定为 4c767435beb1d14da38280c3b1e23b34ce51480d：构建通过，API 26 在应用测试前因镜像无 `getconf` 而退出 127，该轮产物不得用于签名升级。API 37 原作业最终通过 28 项测试及四份独立 180 秒后台报告，实测 16384 页，gRPC 五种配置/前台 31.838 秒通过；未因另一端失败而取消。该归档官方 SHA-256 `c965bf10e808f41dc6bfe5689572b538aadad49163ad5c881cdb9be1272ff2b1` 已核验，逐项回执为 `artifacts/ci-45681805383-android17/partial-proof.json`。这是局部证据，不能用于签名升级，也不能确定本地首次 TLS 超时的原因。
 
-页大小检查已修正为仅在 API 37+ 查询并严格要求 16384，保留该矩阵的实际 16 KiB 校验；不再对 Android 8 调用不存在的命令。执行实际脚本前缀的受控 shell 回归通过：API 26/无 getconf 可继续、API 37/16384 可继续、API 37/4096 必须失败（`artifacts/page-size-preflight-regression.log`）。修正后的完整 CI 与 code 13→14 原签名升级尚待完成。
+页大小检查已修正为仅在 API 37+ 查询并严格要求 16384，保留该矩阵的实际 16 KiB 校验；不再对 Android 8 调用不存在的命令。执行实际脚本前缀的受控 shell 回归通过：API 26/无 getconf 可继续、API 37/16384 可继续、API 37/4096 必须失败（`artifacts/page-size-preflight-regression.log`）。修正后的完整 CI 与 code 13→14 原签名升级现已完成，回执如下。
 
-修正后的 [CI 45683589159](https://github.com/yuuolo/prism-phone/actions/runs/45683589159) 固定为 d5388b3，构建通过、两个模拟器作业仍运行。后续 Reality/Vision 记录边界和解析修正不属于该固定候选。未重启该轮，也未签名或安装 code14 候选。
+修正后的 [CI 45683589159](https://github.com/yuuolo/prism-phone/actions/runs/45683589159) 固定为 d5388b3afcf745278c547c01681bdcf13b581bd0，构建与两端模拟器全部通过。后续 Reality/Vision 记录边界、解析和低阶点修正不属于该固定候选。未重启该轮，公开版本仍为 Beta.9。
 
 按 [V2Fly gRPC 配置](https://www.v2fly.org/config/transport/grpc.html) 核对 serviceName 和 Tun 路由。独立测试同时覆盖显式服务名 PrismVmessInterop，以及双方均不设置服务名的缺省配置；使用实际 Go 服务端结果，没有更改运行中的协议实现来满足测试。
 
@@ -46,3 +46,12 @@ API 37 独立 gRPC 双跳后台也通过（`artifacts/vmess-grpc-background-api3
 手机专项工具已增加可选 `grpc` 传输，使用服务名 `PrismVmessMobile`，前台参数、后台种子及 `vmess-grpc-chain` / `seeded-vmess-grpc-cold-dns-v1` 标记相互对应。两种 Go 服务端的专用回环夹具均启动成功（`artifacts/vmess-grpc-mobile-host-*/fixture.log`），随后回收父/子进程；仪器测试编译通过（`artifacts/vmess-grpc-harness-compile.log`）。这仅是工具准备，不是 Android gRPC 流量验收，默认仍运行原 TCP，尚未加入手机 CI 执行阶段。
 
 后续补充 HTTP/2 实际收发边界回归：内存双工连接上的独立 h2 服务端发送非法压缩标记或超大声明后保持响应体开放，客户端必须在 2 秒界限内关闭，不等待正文或对端 EOF。同步信号确认服务端已校验路由并发送，避免将服务端提前失败误算为通过。`grpc_frames` 现共 4 项通过（`artifacts/vmess-grpc-wire-bounds.log`）；此项不验证公网、TLS 或 Android。
+
+
+## code14 完整软件验收回执（未发布）
+
+固定 CI 两端各 26 项完整回归、1 项 WS 和 1 项 gRPC 专项，共 56 项；官方摘要核验后的两份模拟器归档内，八份独立 180 秒报告逐项确认强制 IDLE、原进程/VPN 保持、三阶段冷 fake-IP DNS、严格 TLS/HTTP 200、用户断开不复活与断开对照拒绝。Android 17 实测页大小 16384；gRPC 分别通过三种和五种配置，前台为 API26 9.113 秒、API37 31.332 秒。回执 `artifacts/android-candidate-45683589159/ci-proof.json`；独立 Go 服务端互通、4 项 gRPC 帧、40 项手机策略、参数回归、双 JNI/Debug/Release/Lint 与 8 项 JVM 均在该源码 CI 内通过。
+
+未签名 ZIP 的官方 SHA-256 `9bcaa781a1ae4496a1867b76d345ca60094b95c276178fc8e5b0746c26cfc750` 已核验，code14/最低 API26/16KiB 对齐通过。之后才使用原证书签名私有候选，大小 24,356,459 字节，SHA-256 `015dae44ed445455b2c8c72dd4d955bafc1ee53e80bc34ff2dd8bfe974c9a67d`。原签名 PrismInstallerCI 从 13 经正常应用缓存按钮、系统 Only this time/Update 覆盖至 14；未卸载或清除主应用。安装前旧助手验证通过，升级后新助手 passed-verify，UID 10230 与 Keystore 解密保持，原 Beta.2 延续的节点/凭据/来源/收藏/选择/规则保持，全部一项加密 prism-mobile 偏好 OuterXml 一致。系统实际安装 APK 的摘要与候选完全相同，来源设置仍选中 Ask every time，app-op deny。回执 `upgrade-proof.json`，验收后关闭并保留样本数据，另一个旧原签名样本未动。
+
+缓存安装不是本次线上下载验证。没有发布 Release/tag、修改任何更新通道或桌面 latest；新版完整配置、其它高级协议及真机/实际账号/外层 TLS 正向等缺口继续保留。首次本地 API37 TLS 超时原因仍未确认，不因后续 CI 成功而宣称根因已修复。
