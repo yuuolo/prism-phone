@@ -43,13 +43,18 @@ jobs:
           path: android/app/src/main/jniLibs/
           key: android-jni-ndk28-api26-${{ steps.compiler.outputs.identity }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'crates/prism-core/**', 'crates/prism-android/**', 'scripts/android/build-native.sh') }}
       - name: Native build tooling
-        run: cargo install cargo-ndk --version 4.0.0 --locked
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libclang-dev
+          cargo install cargo-ndk --version 4.0.0 --locked
       - name: Shared mobile policy tests
         run: |
           python3 -m unittest discover -s scripts/android/tests -v
           cargo test -p prism-android --lib --locked
           cargo test -p prism-android --test ws_profile --locked
           cargo test -p prism-android --test grpc_profile --locked
+          cargo test -p prism-android --test config_script --test config_document --locked
+          cargo test -p prism-core --test reality_parameters --locked
           cargo test -p prism-core --lib --test anytls_wire --test relay_tls_wire --test dns_fallback --test mobile_traffic --test dns_privacy_routing --test fake_ip_rules --test network_recovery --test vmess_parameters --test grpc_frames --locked
       - name: Independent VMess server tests
         run: bash scripts/android/test-vmess-interop.sh

@@ -152,8 +152,11 @@ pub fn parse_proxy(m: &Mapping) -> Result<ProxyConfig> {
             bail!("proxy {}: xhttp download-settings is not supported by prism-core", p.name);
         }
     }
-    if let Some(r) = sub(m, "reality-opts") {
-        p.reality_public_key = s(r, "public-key");
+    if let Some(raw) = m.get("reality-opts").filter(|r| !r.is_null()) {
+        let r = raw.as_mapping().ok_or_else(|| anyhow::anyhow!("proxy {}: invalid reality-opts", p.name))?;
+        let public = r.get("public-key").and_then(Value::as_str).filter(|s| !s.trim().is_empty())
+            .ok_or_else(|| anyhow::anyhow!("proxy {}: Reality requires public-key", p.name))?;
+        p.reality_public_key = Some(public.to_string());
         p.reality_short_id = s(r, "short-id");
     }
     if p.server.is_empty() || p.port == 0 {

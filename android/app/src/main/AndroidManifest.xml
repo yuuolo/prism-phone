@@ -22,6 +22,7 @@
         <activity android:name=".AppRoutingActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".NodeQualityActivity" android:exported="false" />
         <activity android:name=".DnsSettingsActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ConfigDocumentActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".AutomaticActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".MergeActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".GeoDataActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />

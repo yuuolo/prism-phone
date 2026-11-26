@@ -527,6 +527,37 @@ pub extern "system" fn Java_dev_prism_android_CoreBridge_closeConnection(
     })
 }
 #[no_mangle]
+pub extern "system" fn Java_dev_prism_android_CoreBridge_previewDocument(
+    mut env: JNIEnv,
+    _: JClass,
+    raw: JString,
+) -> jstring {
+    ffi(&mut env, |env| {
+        let Ok(raw) = input(env, &raw) else {
+            return json!({"error":"无法读取配置文档"});
+        };
+        // JSON escaping can expand the bounded source/script by up to sixfold.
+        if raw.len() > 6 * (crate::script::MAX_CONFIG + crate::script::MAX_SCRIPT + 1024) {
+            return json!({"error":"配置文档超过大小限制"});
+        }
+        let Ok(doc) = serde_json::from_str::<crate::document::Document>(&raw) else {
+            return json!({"error":"配置文档格式无效"});
+        };
+        match doc.preview() {
+            Ok(result) => json!({
+                "document": serde_json::from_str::<Value>(&result.json).unwrap(),
+                "nodes": result.profile.proxies.len(),
+                "groups": result.profile.groups.len(),
+                "rules": result.profile.rules.len(),
+                "proxyProviders": result.profile.proxy_providers.len(),
+                "ruleProviders": result.profile.rule_providers.len(),
+                "activated": false,
+            }),
+            Err(e) => json!({"error": e.to_string()}),
+        }
+    })
+}
+#[no_mangle]
 pub extern "system" fn Java_dev_prism_android_CoreBridge_importProfile(
     mut env: JNIEnv,
     _: JClass,

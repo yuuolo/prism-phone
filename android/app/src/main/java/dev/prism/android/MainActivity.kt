@@ -415,6 +415,7 @@ class MainActivity : Activity() {
         button("节点质量曲线") {startActivity(Intent(this,NodeQualityActivity::class.java))}
         label("DNS："+if(state.optJSONObject("dns")?.optBoolean("enabled")==true) "自定义加密上游与策略" else "默认代理加密 DNS",13f)
         button("DNS 高级设置") {startActivity(Intent(this,DnsSettingsActivity::class.java))}
+        button("完整配置与脚本 · 草稿预览") {startActivity(Intent(this,ConfigDocumentActivity::class.java))}
         button("地区数据与分类") {startActivity(Intent(this,GeoDataActivity::class.java))}
         button("广告域名拦截") {startActivity(Intent(this,AdblockActivity::class.java))}
         button("链式代理设置") {startActivity(Intent(this,ChainActivity::class.java))}

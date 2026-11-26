@@ -3,6 +3,7 @@ package dev.prism.android
 object CoreBridge {
     init { System.loadLibrary("prism_android") }
     @JvmStatic external fun importProfile(raw: String): String
+    @JvmStatic external fun previewDocument(raw: String): String
     @JvmStatic external fun validateSession(session: String): String
     @JvmStatic external fun routing(request: String): String
     @JvmStatic external fun geodata(request: String): String

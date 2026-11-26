@@ -1,11 +1,13 @@
 # Android 高级能力扩展（前三批已发布，当前 Beta.9）
 
+2026-11-26 用户调整优先级：高级协议接入暂停，先完成完整配置与 JavaScript 脚本、高级分流、运行中修改、多代理组和 DNS。当前进度见 [完整配置工作记录](android-full-config.md)。
+
 用户现已将下列能力纳入 Android 开发目标，取代旧移动方案中相应的“不纳入”边界。当前公开安装包为 Beta.9，已交付候选组策略、应用 VPN 包含/排除、真实质量历史和高级 DNS；其余目标未全部完成；不能把内核已有代码、路线或导入成功当成手机已交付能力。已有签名、包名、更新地址、加密配置及节点标识继续兼容，iOS 与 HarmonyOS NEXT 暂停。
 
 | 用户目标 | 接入与验收安排 | 当前状态 |
 | --- | --- | --- |
-| Reality/Vision、VMess、Hysteria2、TUIC、WireGuard、WS/gRPC | 快照已有协议代码，逐项核对参数保真、TCP/UDP socket 保护、严格认证、真实握手/载荷及网络恢复；通过后逐项开放导入 | VMess TCP/WS code 13 私有候选通过完整 CI 与原签名升级，见 [WS 验收](android-vmess-ws.md)；[gRPC code 14](android-vmess-grpc.md) 正在完整 CI，API 37 首次 TLS 超时原因未确认；均未发布，外层 TLS 正向及其它协议仍待验收 |
-| 完整 Clash/sing-box、providers、覆写、脚本 | 增加独立的完整配置模型与预览/校验；provider 缓存与下载有界；JavaScript 使用 Clash 配置覆写语义，修改生成的配置，资源/执行有上限，脚本失败保留旧配置 | 待实现；明确采用 JavaScript，不改成仅声明式覆写 |
+| Reality/Vision、VMess、Hysteria2、TUIC、WireGuard、WS/gRPC | 快照已有协议代码，逐项核对参数保真、TCP/UDP socket 保护、严格认证、真实握手/载荷及网络恢复；通过后逐项开放导入 | 新增协议接入已暂停。VMess TCP/WS code 13 与 gRPC code 14 私有候选通过完整 CI 和原签名升级；code 14 CI 45683589159 双系统共 56 项、8 份独立后台报告通过，均未发布。Reality/Vision 工作独立保留且未完成 Android 验收 |
+| 完整 Clash/sing-box、providers、覆写、脚本 | 增加独立的完整配置模型与预览/校验；provider 缓存与下载有界；JavaScript 使用 Clash 配置覆写语义，修改生成的配置，资源/执行有上限，脚本失败保留旧配置 | 开发中：独立 Clash 文档、真实 JavaScript、严格引用校验、JNI 预览及加密草稿编辑已接入；主机 10 项、双系统各 5 项专项通过，首次 Android 17 页面失败单独保留；sing-box/providers/运行应用未完成 |
 | 更多规则、自定义代理组、规则集、按应用分流 | 自定义组图校验、规则集来源/大小校验；Android 按包/UID 适配，不把 PC 进程路径假装成 Android 程序标识；区分应用绕过 VPN 与 VPN 内按应用路由 | Beta.6/7 已发布应用包含/排除，完整 CI 通过；多组/规则集/应用指定代理仍待实现 |
 | 运行中切换与热重载 | 校验完成后原子切换，保留监听/TUN、选择与统计；失败不替换运行配置，回归旧会话及新连接 | 待实现；当前界面仍要求断开修改 |
 | 更多代理组、检测地址、fallback、负载均衡 | 第一批扩展已有候选组；后续完整配置模型承载多个自定义组 | 候选组首批已随 Beta.5 发布，Android 与完整 CI 已通过；尚非多个自定义组 |

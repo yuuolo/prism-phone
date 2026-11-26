@@ -100,6 +100,15 @@ class ProfileStore(context: Context) {
         }
         save(state)
     }
+    /** A draft is independent of the running session and shares existing encryption. */
+    fun saveDocument(expected: String, next: JSONObject)=synchronized(lock) {
+        val state=load()
+        check((state.optJSONObject("fullDocument")?.toString() ?: "{}")==expected) {"配置草稿已变化，请重新打开"}
+        val result=JSONObject(CoreBridge.previewDocument(next.toString()))
+        require(!result.has("error")){result.optString("error")}
+        state.put("fullDocument",JSONObject(next.toString()))
+        save(state)
+    }
     private fun normalize(state: JSONObject): JSONObject {
         val nodes=state.getJSONArray("nodes")
         if(!state.has("subscriptions")) {
