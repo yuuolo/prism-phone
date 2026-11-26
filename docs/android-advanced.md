@@ -4,7 +4,7 @@
 
 | 用户目标 | 接入与验收安排 | 当前状态 |
 | --- | --- | --- |
-| Reality/Vision、VMess、Hysteria2、TUIC、WireGuard、WS/gRPC | 快照已有协议代码，逐项核对参数保真、TCP/UDP socket 保护、严格认证、真实握手/载荷及网络恢复；通过后逐项开放导入 | VMess TCP/WS code 13 私有候选通过完整 CI 与原签名升级，见 [WS 验收](android-vmess-ws.md)；[gRPC code 14](android-vmess-grpc.md) 正在完整 CI，API 37 首次 TLS 超时原因未确认；均未发布，外层 TLS 正向及其它协议仍待验收 |
+| Reality/Vision、VMess、Hysteria2、TUIC、WireGuard、WS/gRPC | 快照已有协议代码，逐项核对参数保真、TCP/UDP socket 保护、严格认证、真实握手/载荷及网络恢复；通过后逐项开放导入 | VMess TCP/WS code 13 私有候选通过完整 CI 与原签名升级，见 [WS 验收](android-vmess-ws.md)；[gRPC code 14](android-vmess-grpc.md) 已通过完整 CI 与原签名升级；[Reality/Vision code 15](android-reality-vision.md) 的参数、独立互通及双架构 JNI 通过，Android 真流量/后台仍待验收；均未发布，首次 TLS 超时原因、外层 TLS 正向及其它协议仍待验收 |
 | 完整 Clash/sing-box、providers、覆写、脚本 | 增加独立的完整配置模型与预览/校验；provider 缓存与下载有界；JavaScript 使用 Clash 配置覆写语义，修改生成的配置，资源/执行有上限，脚本失败保留旧配置 | 待实现；明确采用 JavaScript，不改成仅声明式覆写 |
 | 更多规则、自定义代理组、规则集、按应用分流 | 自定义组图校验、规则集来源/大小校验；Android 按包/UID 适配，不把 PC 进程路径假装成 Android 程序标识；区分应用绕过 VPN 与 VPN 内按应用路由 | Beta.6/7 已发布应用包含/排除，完整 CI 通过；多组/规则集/应用指定代理仍待实现 |
 | 运行中切换与热重载 | 校验完成后原子切换，保留监听/TUN、选择与统计；失败不替换运行配置，回归旧会话及新连接 | 待实现；当前界面仍要求断开修改 |

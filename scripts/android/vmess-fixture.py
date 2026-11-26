@@ -6,18 +6,22 @@ binary, CA override or arbitrary forwarding service is bundled with the app.
 """
 import argparse
 import concurrent.futures
+import contextlib
 import json
 import os
 from pathlib import Path
 import select
 import signal
 import socket
+import ssl
 import subprocess
 import threading
 import time
 
 ID = "0b6a0b4e-1111-4222-8333-444455556666"
 VMESS_PORT, ECHO_PORT, FIRST_PORT = 19094, 19095, 19097
+CAMOUFLAGE_PORT = 19098
+REALITY_NAME, REALITY_SID = "reality.fixture.test", "0123456789abcdef"
 
 
 def exact(stream, size):
@@ -82,8 +86,13 @@ def main():
     parser.add_argument("--binary", required=True)
     parser.add_argument("--kind", required=True, choices=["xray", "v2fly"])
     parser.add_argument("--transport", choices=["tcp", "ws", "grpc"], default="tcp")
+    parser.add_argument("--protocol", choices=["vmess", "reality", "vision"], default="vmess")
+    parser.add_argument("--camouflage-dir")
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args()
+    reality = args.protocol != "vmess"
+    if reality and (args.kind != "xray" or args.transport != "tcp" or not args.camouflage_dir):
+        parser.error("Reality/Vision requires Xray, TCP and --camouflage-dir")
     binary = Path(args.binary).resolve(strict=True)
     output = Path(args.output_dir).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -112,8 +121,35 @@ def main():
             {"type": "field", "network": "tcp", "outboundTag": "tls-relay"}]},
     }
     config_path = output / "server.json"
+    tls_context = None
+    if reality:
+        cert_dir = Path(args.camouflage_dir).resolve(strict=True)
+        tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        tls_context.minimum_version = ssl.TLSVersion.TLSv1_3
+        tls_context.set_alpn_protocols(["h2", "http/1.1"])
+        tls_context.load_cert_chain(cert_dir / "camouflage-cert.pem", cert_dir / "camouflage-key.pem")
+        key_result = subprocess.run([str(binary), "x25519"], capture_output=True, text=True, check=True,
+            creationflags=0x08000000 if os.name == "nt" else 0)
+        fields = dict(line.split(":", 1) for line in key_result.stdout.splitlines() if ":" in line)
+        private = fields.get("PrivateKey", "").strip()
+        public = (fields.get("Password (PublicKey)") or fields.get("Password") or fields.get("PublicKey") or "").strip()
+        if not private or not public:
+            raise RuntimeError("Xray key generation did not provide expected fields")
+        user = {"id": ID}
+        if args.protocol == "vision":
+            user["flow"] = "xtls-rprx-vision"
+        config["inbounds"] = [{"listen": "127.0.0.1", "port": VMESS_PORT, "protocol": "vless",
+            "settings": {"clients": [user], "decryption": "none"},
+            "streamSettings": {"network": "raw", "security": "reality", "realitySettings": {
+                "target": f"127.0.0.1:{CAMOUFLAGE_PORT}", "serverNames": [REALITY_NAME],
+                "privateKey": private, "shortIds": [REALITY_SID]}}}]
+        (output / "public.json").write_text(json.dumps({"protocol": args.protocol, "uuid": ID,
+            "publicKey": public, "shortId": REALITY_SID, "serverName": REALITY_NAME}), encoding="utf-8")
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as echo, first_listener() as first:
+    with contextlib.ExitStack() as owned:
+        echo = owned.enter_context(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
+        first = owned.enter_context(first_listener())
+        camouflage = owned.enter_context(first_listener(CAMOUFLAGE_PORT)) if reality else None
         echo.bind(("127.0.0.1", ECHO_PORT))
         echo.settimeout(.5)
         def udp_echo():
@@ -131,7 +167,32 @@ def main():
                 first_hop(client)
             finally:
                 slots.release()
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16 if reality else 8) as pool:
+            camouflage_slots = threading.BoundedSemaphore(8)
+            def camouflage_client(client):
+                try:
+                    with client:
+                        client.settimeout(5)
+                        with tls_context.wrap_socket(client, server_side=True) as tls:
+                            tls.recv(1)
+                except (OSError, ssl.SSLError):
+                    pass
+                finally:
+                    camouflage_slots.release()
+            def camouflage_accepts():
+                while not stop.is_set():
+                    try:
+                        client, _ = camouflage.accept()
+                    except socket.timeout:
+                        continue
+                    except OSError:
+                        return
+                    if camouflage_slots.acquire(blocking=False):
+                        pool.submit(camouflage_client, client)
+                    else:
+                        client.close()
+            if camouflage:
+                threading.Thread(target=camouflage_accepts, daemon=True).start()
             def accepts():
                 while not stop.is_set():
                     try:
@@ -164,7 +225,8 @@ def main():
                             if time.monotonic() >= deadline:
                                 raise RuntimeError("VMess fixture server did not listen")
                             time.sleep(.05)
-                    print("VMess mobile fixture ready (loopback only)", flush=True)
+                    label = "Reality" if reality else "VMess"
+                    print(f"{label} mobile fixture ready (loopback only)", flush=True)
                     while not stop.wait(.5):
                         if child.poll() is not None:
                             raise RuntimeError("VMess fixture server stopped")
