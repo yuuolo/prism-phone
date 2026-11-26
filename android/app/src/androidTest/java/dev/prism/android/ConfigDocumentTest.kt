@@ -79,6 +79,21 @@ class ConfigDocumentTest {
         assertFalse(result.toString(), result.has("error"))
     }
 
+    @Test fun yamlAliasExpansionIsBoundedBeforeScriptExecution() {
+        val source="blob: &data '${"x".repeat(32768)}'\nexpanded: [${List(256){"*data"}.joinToString(",")}]\n"
+        val failed=preview(source,"function main(c) { throw new Error('script was entered'); }")
+        assertTrue(failed.has("error"))
+        assertTrue(failed.getString("error").contains("展开"))
+        val ordinary=preview("""
+            template: &node {name: edge, type: socks5, server: example.com, port: 1080}
+            proxies: [*node]
+            proxy-groups: [{name: choice, type: select, proxies: [edge]}]
+            rules: ['MATCH,choice']
+        """.trimIndent())
+        assertFalse(ordinary.toString(),ordinary.has("error"))
+        assertEquals(1,ordinary.getInt("nodes"))
+    }
+
     @Test fun draftSaveIsEncryptedAndConflictsDoNotReplaceExistingSettings() {
         val context=androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
         val prefs=context.getSharedPreferences("prism-mobile",0)

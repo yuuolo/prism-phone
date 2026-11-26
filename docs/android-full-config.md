@@ -10,6 +10,7 @@
 - QuickJS 执行 `function main(config, profileName) { return config; }`，通过参数传递配置与名称。每次创建独立运行环境，无文件、网络、模块加载或 Android 桥接能力。
 - 输入/输出 4 MiB、脚本 128 KiB、引擎堆 64 MiB、栈 256 KiB、500 ms 中断预算；拒绝异步返回、数组、空值与不可序列化结果。错误不回显脚本异常或凭据。中断是引擎执行预算，不是操作系统进程隔离。
 - 不调用会静默修正配置的 `sanitize`；拒绝解析警告、重复/保留名称、空组、缺失成员/provider/规则集引用与组循环。组图校验使用迭代算法。
+- YAML 在进入脚本前按展开后的字符串字节数、131072 个节点和 64 层深度限制解析，保留普通别名引用，拒绝重复键、多文档和非有限数值；源文件字节限制不能代替展开后的限制。
 - Android JNI 提供预览和统计，始终返回 `activated: false`，不会修改偏好设置或当前 VPN。
 
 本地主机 `config_script` 6 项、`config_document` 4 项通过，见 `artifacts/full-config-document-tests.log`。Android 8 专用调试实例通过 4 项 JNI/存储用例（1.149 秒）及后补的页面操作用例（21.403 秒）；Android 17 / 实际 16 KiB 实例最终完整 5 项通过（19.057 秒），分别见 `artifacts/full-config-instrumentation-api26.log`、`artifacts/full-config-ui-api26.log`、`artifacts/full-config-instrumentation-api37-final.log`。加密保存用例验证原节点/设置保留、冲突及脚本失败不落盘，并在 finally 恢复原配置密文。双架构 JNI、Debug/Release APK、8 项 JVM 与双 Lint 通过，Release APK 的 16 KiB zipalign 检查通过。

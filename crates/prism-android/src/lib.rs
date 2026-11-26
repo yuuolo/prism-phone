@@ -15,3 +15,4 @@ pub mod profile;
 mod recovery;
 pub mod routing;
 pub mod script;
+mod yaml_document;

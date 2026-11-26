@@ -34,9 +34,7 @@ impl Document {
             self.name.len() <= 256 && !self.name.trim().is_empty(),
             "配置名称无效"
         );
-        // JSON is a YAML subset. Conversion rejects non-string mapping keys.
-        let root: Value = serde_yaml::from_str(&self.source)
-            .map_err(|_| anyhow::anyhow!("配置须为有效的 Clash YAML/JSON"))?;
+        let root = crate::yaml_document::parse(&self.source)?;
         ensure!(root.is_object(), "配置须为对象");
         ensure!(
             root.get("outbounds").is_none() && root.get("inbounds").is_none(),
